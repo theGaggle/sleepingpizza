@@ -310,7 +310,7 @@ OS.iku = function (token, to) {
 };
 
 OS.fragment = function (frag) {
-	var chunks = frag.split(/(\[\/?spoiler\])/i);
+	var chunks = frag.split(/(\[\/?surprise\])/i);
 	var state = this.state;
 	for (var i = 0; i < chunks.length; i++) {
 		var chunk = chunks[i], q = (state[0] === DEF.S_QUOTE);
