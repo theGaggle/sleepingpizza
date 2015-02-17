@@ -1,18 +1,17 @@
 {
-    "name": "Meguca.org",
+    "name": "Sleeping Pizza",
     "description": "Realtime imageboard",
     "developer": {
-        "name": "bakape",
-        "url": "https://github.com/bakape/meguca"
+        "name": "theGaggle",
+        "url": "https://github.com/theGaggle/sleepingpizza"
     },
     "launch_path": "/",
     "icons": {
-        "48": "/mobile/icon48",
-        "72": "/mobile/icon72",
-        "96": "/mobile/icon96",
-        "128": "/mobile/icon128",
-        "144": "/mobile/icon144",
-        "192": "/mobile/icon192",
+        "48": "/mobile/android-icon-48x48",
+        "72": "/mobile/android-icon-72x72",
+        "96": "/mobile/android-icon-96x96",
+        "144": "/mobile/android-icon-144x144",
+        "192": "/mobile/android-icon-192x192",
         "512": "/mobile/icon512"
     },
     "default_locale": "en",
