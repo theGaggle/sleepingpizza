@@ -5,6 +5,7 @@
 .lock*
 .DS_Store
 .project
+.vagrant
 authdump
 config.js
 graveyard
@@ -27,4 +28,4 @@ www/src
 www/thumb
 www/mid
 www/vint
-/nbproject/private/
+/nbproject/
