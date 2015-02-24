@@ -47,10 +47,13 @@ function extract_thread_model(section) {
 			continue;
 		var post = new Post(extract_post_model(el));
 		new Article({model: post, el: el});
-		post.trigger('add');
+		// Add to all post collection
+		Posts.add(post);
 		replies.push(post);
 	}
-	var thread = new Thread(extract_post_model(section));
+	var threadModel = extract_post_model(section),
+		thread = new Thread(threadModel);
+	Posts.add(threadModel);
 	thread.set('replies', new Replies(replies));
 	return thread;
 }

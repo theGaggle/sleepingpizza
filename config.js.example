@@ -6,6 +6,9 @@ var config = {
 	DEBUG: true,
 // API webserver listening port
 	API_PORT: 8002,
+// URL on which the API is hosted. This does not change anything serverside,
+// but simply points the client to where nginx or similar is proxying the API to
+	API_URL: '../api/',
 // Secure tripcode encryption salt
 	SECURE_SALT: "LALALALALALALALA", /* [A-Za-z0-9./]{16} */
 	SOCKET_PATH: '/hana',
@@ -26,6 +29,10 @@ var config = {
 
 	BOARDS: ['moe', 'gar', 'meta', 'archive', 'staff'],
 	DEFAULT_BOARD: 'moe',
+	// Add links to the navigator menu to custom URLs
+	PSUEDO_BOARDS: [
+		['g', 'https://google.com']
+	],
 	STAFF_BOARD: 'staff',
 
 // Thread creation cooldown for the same IP in seconds
@@ -57,6 +64,8 @@ var config = {
 	LOGIN_SESSION_TIME: 60*60*24*14,
 // Translate IP's into more human-readable mnemonics
 	IP_MNEMONIC: true,
+// Enable staff to assign custom tags to poster IPs
+	IP_TAGGING: false,
 
 /* Silly little things you probably should not care about */
 

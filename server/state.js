@@ -2,10 +2,8 @@ var _ = require('underscore'),
 	async = require('async'),
 	config = require('../config'),
 	crypto = require('crypto'),
-	etc = require('../etc'),
 	exec = require('child_process').exec,
 	fs = require('fs'),
-	gulp = require('../gulpfile'),
 	hooks = require('../hooks'),
 	imager = require('../imager/config'),
 	path = require('path'),
@@ -73,7 +71,7 @@ function reload_hot_config(cb) {
 	});
 }
 
-var clientConfig = _.pick(config,'IP_MNEMONIC', 'USE_WEBSOCKETS', 'SOCKET_PATH', 'DEBUG', 'READ_ONLY');
+var clientConfig = _.pick(config,'IP_MNEMONIC', 'USE_WEBSOCKETS', 'SOCKET_PATH', 'DEBUG', 'READ_ONLY', 'API_URL', 'IP_TAGGING');
 var clientImager = _.pick(imager,'WEBM', 'UPLOAD_URL','MEDIA_URL', 'THUMB_DIMENSIONS','PINKY_DIMENSIONS',
 		'SPOILER_IMAGES', 'IMAGE_HATS');
 var clientReport = _.pick(report, 'RECAPTCHA_PUBLIC_KEY');
@@ -225,6 +223,7 @@ function make_navigation_html() {
 	if (!HOT.INTER_BOARD_NAVIGATION)
 		return '';
 	var bits = ['<b id="navTop">['];
+	// Actual boards
 	config.BOARDS.forEach(function (board, i) {
 		if (board == config.STAFF_BOARD)
 			return;
@@ -232,6 +231,10 @@ function make_navigation_html() {
 			bits.push(' / ');
 		bits.push('<a href="../'+board+'/">'+board+'</a>');
 	});
+	// Add custom URLs to board navigation
+	config.PSUEDO_BOARDS.forEach(function(item) {
+		bits.push(' / <a href="'+item[1]+'/">'+item[0]+'</a>')
+	})
 	bits.push(']</b>');
 	return {NAVTOP: bits.join('')};
 }
