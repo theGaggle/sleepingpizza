@@ -3,15 +3,12 @@
 
 // Runing on the server
 var isNode = typeof navigator === 'undefined';
-var DEF = {};
 
-if (isNode){
-	// Assigned, not initialised, so they don't get hoisted on the client
-	config = require('./config');
-	hotConfig = require('./server/state').hot;
-	imagerConfig = require('./imager/config');
-	DEF = exports;
-}
+// Define vars, if undefined (on the server)
+var DEF = isNode ? exports : {},
+	config = config || require('./config'),
+	hotConfig = hotConfig || require('./server/state').hot,
+	imagerConfig =  imagerConfig || require('./imager/config');
 
 DEF.INVALID = 0;
 
@@ -38,6 +35,7 @@ DEF.TEARDOWN = 36;
 DEF.ONLINE_COUNT = 37;
 DEF.HOT_INJECTION = 38;
 DEF.NOTIFICATION = 39;
+DEF.RADIO = 40;
 
 DEF.MODEL_SET = 50;
 DEF.COLLECTION_RESET = 55;
@@ -204,8 +202,19 @@ var OneeSama = function (t) {
 var OS = OneeSama.prototype;
 
 var break_re = new RegExp("(\\S{" + DEF.WORD_LENGTH_LIMIT + "})");
-/* internal refs, embeds */
-var ref_re = />>(\d+|>\/watch\?v=[\w-]{11}(?:#t=[\dhms]{1,9})?|>\/soundcloud\/[\w-]{1,40}\/[\w-]{1,80}|>\/(?:a|foolz)\/\d{0,10})/;
+
+// Internal refs, embeds
+var ref_re = '>>(\\d+';
+ref_re += '|>\\/watch\\?v=[\\w-]{11}(?:#t=[\\dhms]{1,9})?';
+ref_re += '|>\\/soundcloud\\/[\\w-]{1,40}\\/[\\w-]{1,80}';
+ref_re += '|>\\/pastebin\\/\\w+';
+
+for (var i = 0; i < config.BOARDS.length; i++) {
+    ref_re += '|>\\/' + config.BOARDS[i] + '\\/(?:\\d+)?';
+}
+
+ref_re += ')';
+ref_re = new RegExp(ref_re);
 
 OS.hook = function (name, func) {
 	var hs = this.hooks[name];
@@ -232,25 +241,32 @@ function override(obj, orig, upgrade) {
 }
 
 OS.red_string = function (ref) {
-	var prefix = ref.slice(0, 3);
 	var dest, linkClass;
-	if (prefix == '>/w') {
+	if (/^>\/watch/.test(ref)) {
 		dest = 'https://www.youtube.com/' + ref.slice(2);
 		linkClass = 'embed watch';
 	}
-	else if (prefix == '>/s') {
+	else if (/^>\/soundcloud/.test(ref)) {
 		dest = 'https://soundcloud.com/' + ref.slice(13);
 		linkClass = 'embed soundcloud';
 	}
-	else if (prefix == '>/a') {
-		var num = parseInt(ref.slice(4), 10);
-		dest = '../outbound/a/' + (num ? ''+num : '');
+	else if (/^>\/pastebin/.test(ref)){
+		dest = dest = 'https://pastebin.com/' + ref.slice(11);
+		linkClass = 'embed pastebin';
 	}
-	else if (prefix == '>/f') {
-		var num = parseInt(ref.slice(8), 10);
-		dest = '../outbound/foolz/' + (num ? ''+num : '');
+
+	// Linkify >>>/board/ URLs
+	var board;
+	for (var i = 0; i < config.BOARDS.length; i++) {
+		board = config.BOARDS[i];
+		if (!new RegExp('^>\\/' + board + '\\/').test(ref))
+			continue;
+		dest = '../' + board;
+		linkClass = '';
+		break;
 	}
-	else {
+
+	if (!dest) {
 		this.tamashii(parseInt(ref, 10));
 		return;
 	}
@@ -348,8 +364,15 @@ OS.karada = function (body) {
 	return output;
 };
 
-var dice_re = /(#flip|#8ball|#pyu|#pcount|#sw(?:\d{1,2}:)?\d{1,2}:\d{1,2}(?:[+-]\d+)?|#\d{0,2}d\d{1,4}(?:[+-]\d{1,4})?)/i;
-
+// Construct hash command regex pattern
+var dice_re = '(#flip|#8ball|#sw(?:\\d{1,2}:)?\\d{1,2}:\\d{1,2}(?:[+-]\\d+)?' +
+	'|#\\d{0,2}d\\d{1,4}(?:[+-]\\d{1,4})?';
+if (config.PYU)
+	dice_re += '|#pyu|#pcount';
+if (config.RADIO)
+	dice_re += '|#q';
+dice_re += ')';
+dice_re = new RegExp(dice_re, 'i');
 
 function parse_dice(frag) {
 	if (frag == '#flip')
@@ -362,6 +385,8 @@ function parse_dice(frag) {
 	// Print current count
 	if (frag == '#pcount')
 		return {pyu: 'print'};
+	if (frag == '#q')
+		return {q: true};
 	var m = frag.match(/^#(\d*)d(\d+)([+-]\d+)?$/i);
 	// Regular dice
 	if (m){
@@ -373,11 +398,15 @@ function parse_dice(frag) {
 			info.bias = parseInt(m[3], 10);
 		return info;
 	}
-	var sw = frag.match(/^#sw(\d+:)?(\d+):(\d+)([+-]\d+)?$/i);//first capture group may or may not be present.
+	// First capture group may or may not be present
+	var sw = frag.match(/^#sw(\d+:)?(\d+):(\d+)([+-]\d+)?$/i);
 	if (sw){
-		var hour= parseInt(sw[1], 10) || 0,min = parseInt(sw[2], 10), sec = parseInt(sw[3], 10);
-		var time = new Date().getTime();
-		// Offset the start. If the start is in the future, a countdown will be displayed
+		var hour= parseInt(sw[1], 10) || 0,
+			min = parseInt(sw[2], 10),
+			sec = parseInt(sw[3], 10);
+		var time = serverTime();
+		// Offset the start. If the start is in the future,
+		// a countdown will be displayed
 		if (sw[4]){
 			var symbol = sw[4].slice(0, 1);
 			var offset = sw[4].slice(1) * 1000;
@@ -386,6 +415,14 @@ function parse_dice(frag) {
 		var end = ((hour*60+min)*60+sec)*1000+time;
 		return {hour:hour,min: min,sec:sec,start:time,end:end};
 	}
+}
+
+function serverTime() {
+	var d = new Date().getTime();
+	// On the server or time difference not compared yet
+	if (isNode || !serverTimeOffset)
+		return d;
+	return d + serverTimeOffset;
 }
 
 function readable_dice(bit, d) {
@@ -397,6 +434,8 @@ function readable_dice(bit, d) {
 		return '#pyu(' + d + ')';
 	if (bit == '#pcount')
 		return '#pcount(' + d + ')';
+	if (bit == '#q')
+		return '#q (' + d[0] + ')';
 	if(/^#sw/.test(bit)){
 		return safe('<syncwatch class="embed" start='+d[0].start+
 				" end="+d[0].end+
@@ -405,7 +444,7 @@ function readable_dice(bit, d) {
 				" sec="+d[0].sec+
 				' >syncwatch</syncwatch>');
 	}
-	var f = d[0], n = d.length, b = 0;
+	var n = d.length, b = 0;
 	if (d[n-1] && typeof d[n-1] == 'object') {
 		b = d[n-1].bias;
 		n--;

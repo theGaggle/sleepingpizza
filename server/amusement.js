@@ -1,6 +1,11 @@
 var common = require('../common'),
+	config = require('../config'),
 	db = require('../db'),
     hooks = require('../hooks');
+
+var radio;
+if (config.RADIO)
+	radio = require('../radio/server');
 
 var rollLimit = 5;
 var pyu_counter;
@@ -23,8 +28,18 @@ exports.roll_dice = function (frag, post, extra) {
 			}
 			rolls.push(pyu_counter);
 		}
-		else if(info.start)	//syncwatch
-			rolls.push({start:info.start, end:info.end, hour:info.hour, min:info.min, sec:info.sec});
+		// r/a/dio song queue
+		else if (info.q && radio)
+			rolls.push(radio.queue);
+		// Syncwatch
+		else if(info.start)
+			rolls.push({
+				start:info.start,
+				end:info.end,
+				hour:info.hour,
+				min:info.min,
+				sec:info.sec
+			});
 		else {
 			rolls.push(f);
 			for (var j = 0; j < info.n; j++)
@@ -111,16 +126,14 @@ hooks.hook('clientSynced', function (info, cb) {
 		cb(null);
 });
 
+// Information banner
 hooks.hook('clientSynced', function (info, cb) {
 	var client = info.client;
-	client.db.get_banner(function (err, banner) {
+	client.db.get_banner(function (err, msg) {
 		if (err)
 			return cb(err);
-		if (!banner)
-			return cb(null);
-		var msg = banner.message;
 		if (msg)
-			client.send([banner.op, common.UPDATE_BANNER, msg]);
+			client.send([0, common.UPDATE_BANNER, msg]);
 		cb(null);
 	});
 });

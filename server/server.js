@@ -28,11 +28,10 @@ if (!imager.is_standalone())
 	require('../imager/daemon'); // preload and confirm it works
 if (config.CURFEW_BOARDS)
 	require('../curfew/server');
-var autoJoe;
-if (config.AUTOJOE){
-	autoJoe = require('../autoJoe/server');
-	autoJoe.isJoe = false;
-}
+var radio;
+if (config.RADIO)
+	radio = require('../radio/server');
+
 try {
 	var reportConfig = require('../report/config');
 	if (reportConfig.RECAPTCHA_PUBLIC_KEY)
@@ -766,8 +765,8 @@ function allocate_post(msg, client, callback) {
 	}
 
 	// Replace names, when a song plays on r/a/dio
-	if (autoJoe && autoJoe.isJoe)
-		post.name = autoJoe.name;
+	if (radio && radio.name)
+		post.name = radio.name;
 	/* TODO: Check against client.watching? */
 	else if (msg.name) {
 		var parsed = common.parse_name(msg.name);
@@ -1206,6 +1205,9 @@ if (require.main == module) {
 			throw err;
 		// Start JSON API express server
 		require('./api');
+		// Start thread archiver
+		if (config.ARCHIVE)
+			require('./archive');
 		var yaku = new db.Yakusoku(null, db.UPKEEP_IDENT);
 		var onegai;
 		var writes = [];
