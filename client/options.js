@@ -178,7 +178,7 @@ function parent_model($el) {
 
 	function option_theme(theme) {
 		if (theme) {
-			var css = theme + '.css?v=' + themeVersion;
+			var css = hotConfig.css[theme + '.css'];
 			$('#theme').attr('href', mediaURL + 'css/' + css);
 		}
 		append_glass();
@@ -575,6 +575,7 @@ function parent_model($el) {
 		{label: 'Image Spoiler', name: 'togglespoiler', which: 73},
 		{label: 'Text Spoiler', name: 'textSpoiler', which: 68},
 		{label: 'Finish Post', name: 'done', which: 83},
+		{label: 'Expand All Images', name: 'expandAll', which: 69}
 	];
 
 	function select_shortcut(event) {

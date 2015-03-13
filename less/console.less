@@ -1,8 +1,13 @@
-a, .act a {
+@import "common";
+@link: white;
+@postBG: black;
+@border: 1px solid white;
+@bold: white;
+@admin: black;
+@mod: black;
+
+.act a {
 	color: white;
-}
-.bfloat > svg {
-	fill: white;
 }
 a:hover, #sync.error {
 	color: #e50000;
@@ -11,49 +16,48 @@ article, aside {
 	margin: 0;
 	padding: 10pt;
 }
-article form {
-	margin-top: 10pt;
-}
-article.highlight {
-	background-color: #222;
+article {
+	form {
+		margin-top: 10pt;
+	}
+	&.highlight {
+		background-color: #222;
+	}
+	header {
+		padding-left: 0;
+	}
 }
 .editing {
 	background-color: #0000b2 !important;
 }
-.editing header {
+.editing header, .editing b {
 	color: white !important;
-}
-article header {
-	padding-left: 0;
 }
 b {
 	font-weight: normal;
 }
-#banner {
-	background: rgba(0, 0, 0, 1);
-	border-bottom: 1px solid white;
+b.admin {
+	&, code {
+		background-color: #e50000;
+		color: black;
+	}
 }
-b.admin, b.admin code {
-	background-color: #e50000;
-	color: black;
-}
-b.moderator, b.moderator code {
-	background-color: #00e500;
-	color: black;
+b.moderator {
+	&, code {
+		background-color: #00e500;
+		color: black;
+	}
 }
 blockquote {
 	margin: 10pt 0 0 0;
 	max-width: 80em;
-}
-blockquote a {
-	color: #00e5e5;
-}
-blockquote a.referenced {
-	border-bottom: 1px dashed #00e5e5;
-}
-blockquote strong {
-	color: #00e500;
-	font-weight: normal;
+	a {
+		color: #00e5e5;
+	}
+	strong {
+		color: #00e500;
+		font-weight: normal;
+	}
 }
 header a {
 	color: #00a5b2;
@@ -69,21 +73,27 @@ body, pre, .themed, fieldset input {
 	color: #ccc;
 }
 del, del em {
-	background-color: white;
-	color: white;
-}
-del:hover, del:hover em, del.reveal, del.reveal em {
-	color: black;
+	&, em {
+		background-color: white;
+		color: white;
+	}
+	&:hover, &.reveal {
+		&, em {
+			color: black;
+		}
+	}
 }
 em {
 	color: #b200b2;
 }
-fieldset input {
-	background-color: transparent;
-	border: solid 1px gray;
-}
-fieldset label {
-	color: gray;
+fieldset {
+	input{
+		background-color: transparent;
+		border: solid 1px gray;
+	}
+	label {
+		color: gray;
+	}
 }
 .embed {
 	background-color: rgba(255, 255, 255, 0.25);
@@ -97,8 +107,10 @@ code {
 	color: #5833fe;
 }
 figcaption, figcaption a {
-	color: #989800;
-	text-transform: lowercase;
+	&, a {
+		color: #989800;
+		text-transform: lowercase;
+	}
 }
 .pagination input, .control {
 	display: none;
@@ -136,12 +148,9 @@ section {
 small {
 	font-size: 10pt;
 	color: #444;
-}
-small a {
-	color: #666;
-}
-small a.referenced {
-	border-bottom: 1px dashed #666;
+	a {
+		color: #666;
+	}
 }
 .act, .omit {
 	color: #444;
@@ -152,8 +161,10 @@ small a.referenced {
 .act:after {
 	content: "<";
 }
-.email, .email b {
-	color: #2020ff;
+.email {
+	&, b {
+		color: #2020ff;
+	}
 }
 .modal, .bmodal, .preview, .popup-menu {
 	background-color: #111;
@@ -168,12 +179,9 @@ small a.referenced {
 #lock, .scroll-lock header {
 	background-image: none;
 }
-
-@media screen and (max-device-width: 480px) {
-	section {
-		margin-left: 0;
-		margin-right: 0;
-	}
+// Override default with a fully opaque banner
+#banner {
+	background: black;
 }
 .option_tab_sel a.tab_sel{
 	outline: double;

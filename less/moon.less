@@ -1,24 +1,19 @@
+@import "common";
+@link: blue;
+@postBG: white;
+@border: 1px solid black;
+@bold: black;
+@admin: #f00000;
+@mod: purple;
+
 a:hover {
 	color: #d00;
-}
-a.referenced {
-	border-bottom: 1px dashed blue;
 }
 article.highlight {
 	background-color: #f5f5f5;
 }
 .editing {
 	background-color: #fa6 !important;
-}
-b.admin {
-	color: #f00000;
-}
-b.moderator {
-	color: purple;
-}
-#banner {
-	background: rgba(255, 255, 255, 0.7);
-	border-bottom: 1px solid black;
 }
 body, pre, .themed {
 	font-family: "MS Pゴシック", "MS PGothic", "Mona", "Hiragino Kaku Gothic Pro";
@@ -36,9 +31,6 @@ nav a {
 small a {
 	color: gray;
 }
-small a.referenced {
-	border-bottom: 1px dashed grey;
-}
 .act a {
 	color: blue;
 }
@@ -53,4 +45,14 @@ small a.referenced {
 }
 #trans {
 	margin-bottom: -7px;
+}
+// Override defaults
+#banner {
+	background: white;
+	a {
+		color: black;
+	}
+	&>a>svg{
+		fill: black;
+	}
 }

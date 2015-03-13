@@ -1,58 +1,46 @@
-a, blockquote a:hover, b.moderator {
+@import "common";
+@link: black;
+@postBG: red;
+@border: 1px solid black;
+@bold: black;
+@admin: red;
+@mod: black;
+
+blockquote a:hover {
 	color: black;
     font-weight:bold;
-}
-a.referenced {
-	border-bottom: 1px dashed black;
-}
-.bfloat > svg {
-	fill: black;
 }
 a:hover, blockquote a, .email b:hover, .editing a:hover {
 	color: black;
     font-weight:bold;
 }
-
 a#options, span#sync, a#feedback{
      color: black;
 }
-
-article, aside, .modal, .bmodal, .pagination {
-	background-image: url(rave_bg.gif);
-	opacity: 0.9;
-}
-article.highlight, .preview, .popup-menu {
-	background-image: url(rave_bg.gif);
+article, aside, .modal, .bmodal, .pagination, .preview, popup-menu, #banner {
+	background: url(rave_bg.gif);
 	opacity: 0.9;
 }
 .editing {
 	background-color: #cec952;
 	border-color: #aa3;
 	color: black;
-}
-.editing a, .editing header {
-	color: #222;
-}
-.editing em {
-	color: #656d28;
-}
-.editing li {
-	color: #ddd;
-}
-.editing .themed {
-	color: #333;
-}
-b.admin {
-	color: #f00000;
-}
-#banner {
-	background-image: url(rave_bg.gif);
-	opacity: 0.9;
-	border-bottom: 1px solid black;
+	a , header{
+		color: #222;
+	}
+	em {
+		color: #656d28;
+	}
+	li {
+		color: #ddd;
+	}
+	.themed {
+		color: #333;
+	}
 }
 body{
 	background-image: url(rave_dance.gif),
-		url(rave_tint.gif);	
+		url(rave_tint.gif);
     background-attachment: fixed;
     color: black;
 }
@@ -81,12 +69,6 @@ hr {
 }
 .popup-menu li:hover {
 	background-color: #136;
-}
-.act:before {
-	content: "[";
-}
-.act:after {
-	content: "]";
 }
 .omit {
 	color: black;

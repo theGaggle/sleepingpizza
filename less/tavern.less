@@ -1,24 +1,24 @@
-a, blockquote a:hover, b.moderator {
+@import "common";
+@link: #ef9d6a;
+@postBG: black;
+@border: 1px solid #282a2e;
+@bold: #c5c8c6;
+@admin: #f00000;
+@mod: #ef9d6a;
+@wood: url(wood.jpg);
+
+blockquote a:hover {
 	color: #ef9d6a;
-}
-a.referenced {
-	border-bottom: 1px dashed #ef9d6a;
-}
-.bfloat > svg {
-	fill: #ef9d6a;
 }
 a:hover, blockquote a, .email b:hover, .editing a:hover {
-	color: #ef9d6a;
-}
-blockquote a.referenced {
-	border-bottom: 1px dashed #ef9d6a;
+	color: @wood;
 }
 article, aside, .modal, .bmodal, .pagination {
-	background: url(wood.jpg);
+	background:@wood;
     color: white;
 }
 article.highlight, .preview, .popup-menu {
-	background: url(wood.jpg);
+	background: @wood;
     color: white;
 }
 .editing {
@@ -27,31 +27,23 @@ article.highlight, .preview, .popup-menu {
            rgba(239, 157, 106, 0.25),
            rgba(239, 157, 106, 0.25)
         ),
-        url(wood.jpg) !important;
+        @wood !important;
 	color: white !important;
-}
-.editing a, .editing header {
-	color: white !important;
-}
-.editing em {
-	color: #B7BA3E !important;
-}
-.editing li {
-	color: white !important;
-}
-.editing .themed {
-	color: white !important;
-}
-b.admin {
-	color: #f00000;
+	a, header {
+		color: white !important;
+	}
+	em {
+		color: #B7BA3E !important
+	}
+	li {
+		color: white !important;
+	}
+	.themed {
+		color: white !important;
+	}
 }
 #banner {
-	background: url(wood.jpg);
 	color: white;
-	border-bottom: 1px solid #282a2e;
-}
-a>b {
-	color: #c5c8c6;
 }
 body {
 	background: url(tavern.jpg);
@@ -70,7 +62,7 @@ body, pre, .themed, a>b {
 	text-shadow: none;
 }
 em {
-	color: #B7BA3E;   
+	color: #B7BA3E;
 }
 h1 {
 	font: bolder 28px Tahoma;
@@ -91,12 +83,6 @@ hr {
 	background-color: #136;
     color: white;
 }
-.act:before {
-	content: "[";
-}
-.act:after {
-	content: "]";
-}
 .omit {
 	color: white;
 }
@@ -110,4 +96,6 @@ hr {
 .themed {
 	color: white;
 }
-
+#banner {
+	background: @wood;
+}
