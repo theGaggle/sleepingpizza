@@ -29,7 +29,7 @@ Note: The git master branch contains the development version of the board. For m
 * ImageMagick
 * gcc, g++, make
 * libpng with development headers
-* [io.js](https://iojs.org)
+* [io.js](https://iojs.org) (Latest tested version is 1.4.3. At the moement of writing still compatible with node.js v0.12.0+, when run with the `--harmony` flag)
 * redis
 
 ###Optional dependencies for various features
@@ -37,7 +37,6 @@ Note: The git master branch contains the development version of the board. For m
 * ffmpeg 2.2+ for WebM support
   * with libmp3lame for MP3
 * pngquant  2.3.1+ for PNG thumbnails
-* exiftool for stripping images of EXIF data
 
 ###Optional npm dependancies
 * ~~daemon~~ (broken currently)

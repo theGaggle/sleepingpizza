@@ -224,7 +224,11 @@ var ComposerView = Backbone.View.extend({
 		this.line_buffer = $('<p/>');
 		this.meta = $('<header><a class="nope"><b/></a> <time/></header>');
 		this.$input = $('<textarea/>', {
-			name: 'body', id: 'trans', rows: '1', "class": 'themed',
+			name: 'body',
+			id: 'trans',
+			rows: '1',
+			"class": 'themed',
+			autocomplete: 'off'
 		});
 		this.submit = $('<input>', {
 			id: 'done', type: 'button', value: 'Done',
@@ -837,7 +841,7 @@ var ComposerView = Backbone.View.extend({
 
 function image_upload_url() {
 	var url = imagerConfig.UPLOAD_URL || '../upload/';
-	return url + '?id=' + CONN_ID
+	return url + '?id=' + CONN_ID;
 }
 
 dispatcher[DEF.IMAGE_STATUS] = function (msg) {

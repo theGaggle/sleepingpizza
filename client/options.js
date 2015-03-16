@@ -41,7 +41,8 @@ function parent_model($el) {
 	optSpecs.push(option_spoiler);
 	optSpecs.push(option_backlinks);
 	optSpecs.push(option_linkify);
-	optSpecs.push(option_notification);
+	if (!isMobile)
+		optSpecs.push(option_notification);
 	optSpecs.push(option_relative_time);
 	if (config.RADIO && !isMobile)
 		optSpecs.push(option_now_playing);
@@ -112,13 +113,16 @@ function parent_model($el) {
 		catch (e) {}
 	});
 
-	var tabs = Object.freeze({
+	var tabs = {
 		General: "General",
 		Style: "Style",
 		ImageSearch: "Image Search",
-		Fun: "Fun",
-		Shortcuts: "Shortcuts",
-	});
+		Fun: "Fun"
+	};
+	// Typically no keyboard on mobile, so don't need the tab
+	// XXX: Need to properly modularise this and other non-mobile shit
+	if (!isMobile)
+		tabs.Shortcuts = "Shortcuts";
 
 	/* LAST N CONFIG */
 	function option_last_n(n) {
@@ -191,8 +195,6 @@ function parent_model($el) {
 	option_theme.tab = tabs.Style;
 
 	/* THUMBNAIL OPTIONS */
-
-	var revealSetup = false;
 
 	function option_thumbs(type) {
 		$.cookie('thumb', type);
@@ -306,7 +308,7 @@ function parent_model($el) {
 
 	function option_now_playing(toggle){
 		if (toggle)
-			Banner.clearRadio()
+			Banner.clearRadio();
 	}
 
 	option_now_playing.id = 'nowPlaying';
@@ -709,7 +711,7 @@ function parent_model($el) {
 				spec(val);
 			});
 		});
-		var tabCont= {}	//will contain the html for the content of each tab
+		var tabCont= {};	//will contain the html for the content of each tab
 		optSpecs.forEach(function (spec) {
 			var id = spec.id;
 			if (nashi.opts.indexOf(id) >= 0)
