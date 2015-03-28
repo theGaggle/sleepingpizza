@@ -41,7 +41,9 @@ function parent_model($el) {
 	optSpecs.push(option_spoiler);
 	optSpecs.push(option_backlinks);
 	optSpecs.push(option_linkify);
-	optSpecs.push(option_notification);
+	if (!isMobile)
+		optSpecs.push(option_notification);
+	optSpecs.push(option_anonymise);
 	optSpecs.push(option_relative_time);
 	if (config.RADIO && !isMobile)
 		optSpecs.push(option_now_playing);
@@ -112,13 +114,16 @@ function parent_model($el) {
 		catch (e) {}
 	});
 
-	var tabs = Object.freeze({
+	var tabs = {
 		General: "General",
 		Style: "Style",
 		ImageSearch: "Image Search",
-		Fun: "Fun",
-		Shortcuts: "Shortcuts",
-	});
+		Fun: "Fun"
+	};
+	// Typically no keyboard on mobile, so don't need the tab
+	// XXX: Need to properly modularise this and other non-mobile shit
+	if (!isMobile)
+		tabs.Shortcuts = "Shortcuts";
 
 	/* LAST N CONFIG */
 	function option_last_n(n) {
@@ -191,8 +196,6 @@ function parent_model($el) {
 	option_theme.tab = tabs.Style;
 
 	/* THUMBNAIL OPTIONS */
-
-	var revealSetup = false;
 
 	function option_thumbs(type) {
 		$.cookie('thumb', type);
@@ -290,6 +293,16 @@ function parent_model($el) {
 	option_linkify.tooltip = 'Convert in-post text URLs to clickable links. WARNING: Potential security hazard (XSS). Requires page refresh.';
 	option_linkify.tab = tabs.General;
 
+	/* ANONIMISE ALL POSTER NAMES */
+
+	function option_anonymise() {};
+
+	option_anonymise.id = 'anonymise';
+	option_anonymise.label = 'Anonymise';
+	option_anonymise.type = 'checkbox';
+	option_anonymise.tooltip = 'Display all posters as anonymous';
+	option_anonymise.tab = tabs.General;
+
 	/* RELATIVE POST TIMESTAMPS */
 
 	function option_relative_time(toggle){
@@ -306,7 +319,10 @@ function parent_model($el) {
 
 	function option_now_playing(toggle){
 		if (toggle)
-			Banner.clearRadio()
+			Banner.clearRadio();
+		// Query the server for current stream info
+		else
+			send([DEF.RADIO]);
 	}
 
 	option_now_playing.id = 'nowPlaying';
@@ -709,7 +725,7 @@ function parent_model($el) {
 				spec(val);
 			});
 		});
-		var tabCont= {}	//will contain the html for the content of each tab
+		var tabCont= {};	//will contain the html for the content of each tab
 		optSpecs.forEach(function (spec) {
 			var id = spec.id;
 			if (nashi.opts.indexOf(id) >= 0)
@@ -800,6 +816,69 @@ function parent_model($el) {
 				else selCont.addClass('tab_sel');
 			}
 		});
+
+		// Configuration export and import links
+		var $general = $tabCont.children().first();
+		$general.append('<br>');
+		$('<a/>', {
+			title: "Export settings to file",
+		})
+			.html('Export')
+			// A bit roundabout, but we need to generate the file on click, not
+			// link render
+			.click(function() {
+				var a = document.createElement('a');
+				a.setAttribute('href',
+					window.URL.createObjectURL(new Blob(
+						[JSON.stringify(localStorage)], {
+							type: 'octet/stream'
+					})));
+				a.setAttribute('download', 'meguca-config.json');
+				a.click();
+			})
+			.appendTo($general);
+		$general.append(' ');
+		$('<a/>', {
+			title: 'Import settings from file'
+		})
+			.html('Import')
+			.click(function(e) {
+				// Proxy to hidden file input
+				e.preventDefault();
+				var $input = $('#importSettings');
+				$input.click();
+				$input.one('change', function() {
+					var reader = new FileReader();
+					reader.readAsText($input[0].files[0]);
+					reader.onload = function(e) {
+						var json;
+						// In case of curruption
+						try {
+							json = JSON.parse(e.target.result);
+						}
+						catch (e) {
+							alert('Import failed. File corrupt');
+						}
+						if (!json)
+							return;
+						localStorage.clear();
+						for (var key in json) {
+							localStorage[key] = json[key];
+						}
+						alert('Import successfull. The page will now reload.');
+						location.reload();
+					};
+				});
+			})
+			.appendTo($general);
+		$('<input/>', {
+			type: 'file',
+			style: 'display: none;',
+			id: 'importSettings',
+			name: 'Import Settings'
+		})
+			.appendTo($general);
+		$general.append('<br>');
 
 		$opts.append($tabSel);
 		$opts.append($tabCont);

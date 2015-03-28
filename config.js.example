@@ -31,9 +31,13 @@ var config = {
 	DEFAULT_BOARD: 'moe',
 	// Add links to the navigator menu to custom URLs
 	PSUEDO_BOARDS: [
-		['g', 'https://google.com']
+		['alpha', 'http://localhost:8000/moe/?alpha=true']
 	],
 	STAFF_BOARD: 'staff',
+
+// Language settings. You can easily map more. See ./lang/
+	LANGS: ['en_GB'],
+	DEFAULT_LANG: 'en_GB',
 
 // Thread creation cooldown for the same IP in seconds
 	THREAD_THROTTLE: 60,

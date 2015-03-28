@@ -292,9 +292,9 @@ span.control .popup-menu {
 	li {
 		display: none;
 		float: left;
+		padding-top: 5px;
 		&.tab_sel {
 			display: inline-block;
-			padding-top: 5px;
 		}
 	}
 }
@@ -327,6 +327,12 @@ span.control .popup-menu {
 	-moz-margin-start: 0em;
 	-moz-margin-end: 0px;
 	-moz-padding-start: 0px;
+}
+#UTCClock {
+	text-align: center;
+	b {
+		display: block;
+	}
 }
 #bgvid{
 	position: fixed;
@@ -439,7 +445,6 @@ figure {
 }
 
 #bottom {
-	float: left;
 	margin-bottom: 7px;
 	min-width: 100px;
 }
@@ -460,7 +465,8 @@ figure {
 		text-decoration: none;
 	}
 }
-#shortcuts input {
+// Old client, new client
+#shortcuts input, .Shortcuts input {
 	border: none;
 	width: 2em;
 	margin-right: 1em;

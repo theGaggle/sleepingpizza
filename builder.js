@@ -14,16 +14,29 @@ var start_server = _.debounce(function () {
 	server = child_process.spawn('node', ['server/server.js']);
 	server.stdout.pipe(process.stdout);
 	server.stderr.pipe(process.stderr);
-}, 500);
+}, 2000);
+
+function rebuildClient(cb) {
+	var make = child_process.spawn('make', ['client']);
+	make.stdout.pipe(process.stdout);
+	make.stderr.pipe(process.stderr);
+	make.on('error', function(err) {
+		console.error(err);
+	});
+	make.on('exit', cb);
+}
 
 var reload_state = _.debounce(function () {
-	if (server)
-		server.kill('SIGHUP');
-}, 500);
+	rebuildClient(function() {
+		if (server)
+			server.kill('SIGHUP');
+	});
+}, 2000);
 
 deps.SERVER_DEPS.forEach(monitor.bind(null, start_server));
 deps.SERVER_STATE.forEach(monitor.bind(null, reload_state));
 deps.CLIENT_DEPS.forEach(monitor.bind(null, reload_state));
+deps.ALPHA.forEach(monitor.bind(null, reload_state));
 
 function monitor(func, dep) {
 	var mtime = new Date;
@@ -35,4 +48,4 @@ function monitor(func, dep) {
 	});
 }
 
-start_server();
+rebuildClient(start_server);

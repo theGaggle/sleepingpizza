@@ -12,7 +12,6 @@
         "96": "/mobile/android-icon-96x96",
         "144": "/mobile/android-icon-144x144",
         "192": "/mobile/android-icon-192x192",
-        "512": "/mobile/icon512"
     },
     "default_locale": "en",
     "fullscreen": true

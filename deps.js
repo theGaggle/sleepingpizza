@@ -1,5 +1,3 @@
-var config = require('./config');
-
 exports.SERVER_DEPS = [
 	'admin/common.js',
 	'admin/index.js',
@@ -52,7 +50,7 @@ exports.VENDOR_DEPS = [
 ];
 
 exports.CLIENT_DEPS = [
-	'common.js',
+	'client/common.js',
 	'client/init.js',
 	'client/memory.js',
 	'client/imager.js',
@@ -74,6 +72,7 @@ exports.CLIENT_DEPS = [
 	'report/client.js',
 	'time/client.js',
 	'client/banner.js',
+	'radio/client.js',
 	'client/catalog.js',
 	'client/mobile.js',
 ];
@@ -82,6 +81,7 @@ exports.SERVER_STATE = [
 	'admin/client.js',
 	'hot.js',
 	'tmpl/alookup.html',
+	'tmpl/alpha.tmpl',
 	'tmpl/curfew.html',
 	'tmpl/filter.html',
 	'tmpl/index.html',
@@ -92,4 +92,17 @@ exports.SERVER_STATE = [
 exports.MOD_CLIENT_DEPS = [
 	'admin/common.js',
 	'admin/client.js',
+];
+// Only used for monitoring by builder.js
+exports.ALPHA = [
+	'tmpl/alpha.html',
+	'alpha/client.js',
+	'alpha/models.js',
+	'alpha/extract.js',
+	'alpha/state.js',
+	'alpha/options.js',
+	'aplha/background.js',
+	'alpha/main.js',
+	'alpha/banner.js',
+	'alpha/identity.js',
 ];
