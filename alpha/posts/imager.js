@@ -3,8 +3,9 @@
  */
 
 var $ = require('jquery'),
-	main = require('./main'),
-	options = require('./options');
+	Backbone = require('backbone'),
+	main = require('../main'),
+	options = require('../options');
 
 var Hidamari = exports.Hidamari = {
 	events: {
