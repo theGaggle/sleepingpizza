@@ -5,32 +5,54 @@
 var $ = require('jquery'),
 	_ = require('underscore'),
 	Backbone = require('backbone'),
+	hover = require('../hover'),
 	imager = require('./imager'),
 	main = require('../main'),
 	options = require('../options'),
-	postCommon = require('./common');
+	postCommon = require('./common'),
+	state = require('../state');
 
 var Article = module.exports = Backbone.View.extend({
 	tagName: 'article',
 
 	initialize: function () {
+		/*
+		 * XXX: A bit ineficient, because first an empty element is renderred
+		 * and then a proper one.
+		 */
+		if (this.$el.is(':empty'))
+			this.render();
 		this.listenTo(this.model, {
 			'change:backlinks': this.renderBacklinks,
 			'change:editing': this.renderEditing,
 			'change:image': this.renderImage,
-			'removeSelf': this.bumplessRemove
+			removeSelf: this.bumplessRemove,
+			destroy: this.remove
 		});
 		this.initCommon();
+		/* TEMP: Disabled for now
 		if (options.get('postUnloading') && state.page.get('thread')) {
 			this.listenTo(this.model, {
 				'add': unloadTopPost
 			});
 		}
+		*/
 	},
 
 	render: function () {
-		var html = main.oneeSama.mono(this.model.attributes);
-		this.setElement($($.parseHTML(html)).filter('article')[0]);
+		/*
+		 * Pass this model's links to oneeSama for renderring. The reason we
+		 * don't use the links attribute directly in OneeSama is different
+		 * rendering pathways on the server and client.
+		 * XXX: Unify this shit.
+		 */
+		main.oneeSama.links = this.model.get('links');
+		this.setElement(main.oneeSama.mono(this.model.attributes));
+		// Insert into section
+		$('#' + this.model.get('op'))
+			.children('blockquote,.omit,form,article[id]:last')
+			.last()
+			.after(this.$el);
 		return this;
 	},
 
@@ -58,30 +80,15 @@ var Article = module.exports = Backbone.View.extend({
 	renderEditing: function (model, editing) {
 		this.$el.toggleClass('editing', !!editing);
 		if (!editing)
-			this.$('blockquote')[0].normalize();
+			this.$el.children('blockquote')[0].normalize();
 	},
 
 	renderHide: function (model, hide) {
 		this.$el.toggle(!hide);
 	},
 
-	renderImage: function (model, image) {
-		var hd = this.$('header'), fig = this.$('figure');
-		if (!image)
-			fig.remove();
-		else if (hd.length && !fig.length) {
-			/* Is this focus business necessary here? */
-			var focus = get_focus();
-
-			insert_image(image, hd, false);
-
-			if (focus)
-				focus.focus();
-			this.autoExpandImage();
-		}
-	},
-
 	// To not shift the scroll position on remove
+	// TODO: Rework, once scrolling code is done
 	bumplessRemove: function(){
 		const pos = $(window).scrollTop();
 		if (!at_bottom() && this.$el.offset().top < pos)
@@ -94,3 +101,31 @@ var Article = module.exports = Backbone.View.extend({
 
 // Extend with common mixins
 _.extend(Article.prototype, imager.Hidamari, postCommon);
+
+// Keeps threads non-laggy by keeping displayed post count within lastN
+function unloadTopPost(){
+	var m = location.search.match(/last=(\d+)/);
+	const threadNum = state.page.get('thread');
+	if (!m
+		|| $(hover.mouseover.get('target')).is('a, img, video')
+		|| threadNum > 0
+	) {
+		return;
+	}
+	var	thread = main.threads.get(threadNum);
+	if (thread.replies.length <= parseInt(m[1], 10) + 5)
+		return;
+	thread.replies.shift().destroy();
+	var $omit = $('.omit');
+	if (!$omit.length){
+		$omit = $('\t<span/>', {'class': 'omit'}).text(window.lang.abbrev_msg(1));
+		$omit.append(common.action_link_html(threadNum
+			+ location.hash, 'See all')+'\n');
+		$('section>blockquote').after($omit);
+	}
+	else {
+		var m = $omit.html().match(/^(\d+)(.*)/);
+		$('.omit').html(parseInt(m[1])+1+m[2]);
+	}
+	unloadTopPost();
+}

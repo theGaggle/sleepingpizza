@@ -3,6 +3,7 @@ var caps = require('./caps'),
 	config = require('../config'),
     db = require('../db'),
     imager = require('../imager'),
+	lang = require('../lang/'),
     STATE = require('./state'),
     web = require('./web');
 
@@ -23,14 +24,13 @@ function tamashii(num) {
  * templates. Some things can be offloaded to the client.
  */
 
-exports.write_thread_html = function (reader, req, out, opts) {
+exports.write_thread_html = function (reader, req, out, cookies, opts) {
 	var oneeSama = new common.OneeSama(tamashii);
 	oneeSama.tz_offset = req.tz_offset;
 
 	opts.ident = req.ident;
 	caps.augment_oneesama(oneeSama, opts);
 
-	var cookies = web.parse_cookie(req.headers.cookie);
 	if (cookies.spoil == 'true')
 		oneeSama.spoilToggle = true;
 	if (cookies.agif == 'true')
@@ -41,9 +41,9 @@ exports.write_thread_html = function (reader, req, out, opts) {
 		oneeSama.eLinkify = true;
 	if (common.thumbStyles.indexOf(cookies.thumb) >= 0)
 		oneeSama.thumbStyle = cookies.thumb;
-	const language = config.LANGS[cookies.lang];
-	if (language)
-		oneeSama.lang = language;
+	const language = config.LANGS.indexOf(cookies.lang) > -1 ? cookies.lang
+		: config.DEFAULT_LANG;
+	oneeSama.lang = lang[language].common;
 	var lastN = cookies.lastn && parseInt(cookies.lastn, 10);
 	if (!lastN || !common.reasonable_last_n(lastN))
 		lastN = STATE.hot.THREAD_LAST_N;
@@ -114,13 +114,15 @@ exports.write_thread_html = function (reader, req, out, opts) {
 	});
 };
 
+// [live 0 1 2 3] [Catalog]
 function pagination(info, oneeSama) {
-	var live = oneeSama.lang.live;
-	var bits = ['<nav class="pagination act">'], cur = info.cur_page;
+	const live = oneeSama.lang.live,
+		cur = info.cur_page;
+	var bits = '<nav class="pagination act">';
 	if (cur >= 0)
-		bits.push('<a href=".">' + live + '</a>');
+		bits += `<a href=".">${live}</a>`;
 	else
-		bits.push('<strong>' + live + '</strong>');
+		bits += `<strong>${live}</strong>`;
 	var start = 0, end = info.pages, step = 1;
 	if (info.ascending) {
 		start = end - 1;
@@ -128,13 +130,12 @@ function pagination(info, oneeSama) {
 	}
 	for (var i = start; i != end; i += step) {
 		if (i != cur)
-			bits.push('<a href="page' + i + '">' + i + '</a>');
+			bits += `<a href="page${i}" class="history">${i}</a>`;
 		else
-			bits.push('<strong>' + i + '</strong>');
+			bits += `<strong>${i}</strong>`;
 	}
-	bits.push('] [<a class="catalogLink">' + oneeSama.lang.catalog + '</a>');
-	bits.push('</nav>');
-	return bits.join('');
+	bits += `] [<a class="catalogLink">${oneeSama.lang.catalog}</a></nav>`;
+	return bits;
 }
 
 
@@ -149,7 +150,7 @@ function threadsTop(oneeSama) {
 }
 
 function threadsBottom(oneeSama) {
-	return common.action_link_html('.',	oneeSama.lang.return, 'bottom')
+	return common.action_link_html('.',	oneeSama.lang.return, 'bottom', 'history')
 		+ '&nbsp;'
 		+ common.action_link_html('#', oneeSama.lang.top);
 }
@@ -172,8 +173,8 @@ function make_link_rels(board, bits) {
 	}).join('');
 }
 
-exports.write_board_head = function (out, board, nav, alpha) {
-	var indexTmpl = alpha ? RES.alphaTmpl : RES.indexTmpl;
+exports.write_board_head = function (out, board, nav, alpha, language) {
+	var indexTmpl = alpha ? RES['alphaTmpl-' + language] : RES.indexTmpl;
 	var title = STATE.hot.TITLES[board] || escape(board);
 	var metaDesc = "Real-time imageboard";
 
@@ -196,7 +197,8 @@ exports.write_board_title = function(out, board){
 };
 
 exports.write_thread_head = function (out, board, op, opts) {
-	var indexTmpl = opts.alpha ? RES.alphaTmpl : RES.indexTmpl;
+	var indexTmpl = opts.alpha ? RES['alphaTmpl-' + opts.lang]
+		: RES.indexTmpl;
 	var title = '/'+escape(board)+'/';
 	if (opts.subject)
 		title += ' - ' + escape(opts.subject) + ' (#' + op + ')';
@@ -240,9 +242,9 @@ function make_thread_meta(board, num, abbrev) {
 	return make_link_rels(board, bits);
 }
 
-exports.write_page_end = function (out, ident, alpha) {
-	var last = RES[alpha ? 'alphaTmpl' : 'indexTmpl'].length - 1;
-		out.write(RES[alpha ? 'alphaTmpl' : 'indexTmpl'][last]);
+exports.write_page_end = function (out, ident, alpha, language) {
+	const tmpl = alpha ? 'alphaTmpl-' + language : 'indexTmpl';
+	out.write(RES[tmpl][RES[tmpl].length - 1]);
 	if (ident) {
 		if (caps.can_administrate(ident))
 			out.write('<script src="../admin.js"></script>\n');

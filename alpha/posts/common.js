@@ -3,13 +3,15 @@
  */
 var imager = require('./imager'),
 	main = require('../main'),
-	options = require('../options');
+	options = require('../options'),
+	time = require('../time');
 
 module.exports = {
 	initCommon: function(){
 		this.listenTo(this.model, {
 			'change:hide': this.renderHide,
-			'spoiler': this.renderSpoiler
+			'spoiler': this.renderSpoiler,
+			'change:image': this.renderImage
 		});
 		// Models get added to multiple collections. Prevent duplication by
 		// calling only once
