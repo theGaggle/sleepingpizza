@@ -2,7 +2,7 @@ var _ = require('underscore'),
     caps = require('./caps'),
     config = require('../config'),
     formidable = require('formidable'),
-    hooks = require('../hooks'),
+    hooks = require('../util/hooks'),
     persona = require('./persona'),
     Stream = require('stream'),
     url_parse = require('url').parse,
@@ -13,7 +13,7 @@ var send;
 if (config.SERVE_STATIC_FILES)
 	send = require('send');
 
-var escape = require('../common').escape_html;
+var escape = require('../common/index').escape_html;
 var routes = [];
 var resources = [];
 

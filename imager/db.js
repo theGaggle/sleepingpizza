@@ -1,9 +1,9 @@
 var compare = require('./compare.node').hashCompareCpp,
-	 config = require('./config'),
+	 config = require('../config'),
     events = require('events'),
     fs = require('fs'),
-    Muggle = require('../etc').Muggle,
-    tail = require('../tail'),
+    Muggle = require('../util/etc').Muggle,
+    tail = require('../util/tail'),
     util = require('util'),
     winston = require('winston');
 

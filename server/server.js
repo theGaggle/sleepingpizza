@@ -7,18 +7,18 @@ var _ = require('underscore'),
     async = require('async'),
     caps = require('./caps'),
     check = require('./msgcheck').check,
-    common = require('../common'),
+    common = require('../common/index'),
     config = require('../config'),
     db = require('../db'),
     fs = require('fs'),
-    hooks = require('../hooks'),
+    hooks = require('../util/hooks'),
     imager = require('../imager'),
-    Muggle = require('../etc').Muggle,
+    Muggle = require('../util/etc').Muggle,
     okyaku = require('./okyaku'),
     persona = require('./persona'),
     render = require('./render'),
     STATE = require('./state'),
-    tripcode = require('./../tripcode/tripcode'),
+    tripcode = require('./tripcode/tripcode'),
     urlParse = require('url').parse,
     web = require('./web'),
     winston = require('winston');
@@ -27,17 +27,16 @@ require('../admin');
 if (!imager.is_standalone())
 	require('../imager/daemon'); // preload and confirm it works
 if (config.CURFEW_BOARDS)
-	require('../curfew/server');
+	require('./curfew');
 var radio;
 if (config.RADIO)
-	radio = require('../radio/server');
+	radio = require('radio');
 
 try {
-	var reportConfig = require('../report/config');
-	if (reportConfig.RECAPTCHA_PUBLIC_KEY)
-		require('../report/server');
+	if (config.RECAPTCHA_PUBLIC_KEY)
+		require('./report');
 } catch (e) {}
-require('../time/server');
+require('./time');
 
 var RES = STATE.resources;
 
@@ -52,7 +51,7 @@ dispatcher[common.SYNCHRONIZE] = function (msg, client) {
 		if (!err)
 			_.extend(client.ident, ident);
 		if (!synchronize(msg, client))
-			client.kotowaru(Muggle("Bad protocol."));
+			client.kotowaru(Muggle("Bad protocol"));
 	}
 	var chunks = web.parse_cookie(msg.pop());
 	var cookie = persona.extract_login_cookie(chunks);
@@ -67,7 +66,7 @@ dispatcher[common.SYNCHRONIZE] = function (msg, client) {
 function synchronize(msg, client) {
 	if (!check(['id', 'string', 'id=>nat', 'boolean'], msg))
 		return false;
-	var id = msg[0], board = msg[1], syncs = msg[2], live = msg[3];
+	const id = msg[0];
 	if (id in STATE.clients) {
 		winston.error("Duplicate client id " + id);
 		return false;
@@ -79,8 +78,16 @@ function synchronize(msg, client) {
 		/* Sync logic is buggy; allow for now */
 		//return true;
 	}
+	return linkToDatabase(msg[1], msg[2], msg[3], client);
+}
+
+// Establish database liteners and handlers for the client
+function linkToDatabase(board, syncs, live, client) {
 	if (!caps.can_access_board(client.ident, board))
 		return false;
+	if (client.db)
+		client.db.kikanai().disconnect();
+
 	var dead_threads = [], count = 0, op;
 	for (var k in syncs) {
 		k = parseInt(k, 10);
@@ -107,17 +114,13 @@ function synchronize(msg, client) {
 		count = 1;
 	}
 	client.board = board;
-
-	if (client.db)
-		client.db.disconnect();
 	client.db = new db.Yakusoku(board, client.ident);
-	/* Race between subscribe and backlog fetch; client must de-dup */
+	// Race between subscribe and backlog fetch; client must de-dup
 	client.db.kiku(client.watching, client.on_update.bind(client),
 			client.on_thread_sink.bind(client), listening);
 	function listening(errs) {
 		if (errs && errs.length >= count)
-			return client.kotowaru(Muggle(
-					"Couldn't sync to board."));
+			return client.kotowaru(Muggle("Couldn't sync to board."));
 		else if (errs) {
 			dead_threads.push.apply(dead_threads, errs);
 			errs.forEach(function (thread) {
@@ -153,6 +156,13 @@ function synchronize(msg, client) {
 	}
 	return true;
 }
+
+// Switch the serverside syncs, when client switches them with HTML5 History
+dispatcher[common.RESYNC] = function(msg, client) {
+	if (!check(['string', 'id=>nat', 'boolean'], msg))
+		return false;
+	return linkToDatabase(msg[0], msg[1], msg[2], client);
+};
 
 function setup_imager_relay(cb) {
 	var onegai = new imager.Onegai;
@@ -344,7 +354,6 @@ function (req, resp) {
 	var board = this.board;
 	// Only render <threads> for pushState() updates
 	const min = req.query.minimal == 'true',
-		alpha = req.query.alpha == 'true',
 		cookies = web.parse_cookie(req.headers.cookie),
 		lang = config.LANGS.indexOf(cookies.lang) > -1 ? cookies.lang
 			: config.DEFAULT_LANG;
@@ -359,7 +368,7 @@ function (req, resp) {
 	yaku.once('begin', function (thread_count) {
 		var nav = page_nav(thread_count, -1, board == 'archive');
 		if (!min)
-			render.write_board_head(resp, board, nav, alpha, lang);
+			render.write_board_head(resp, board, nav, lang);
 		else
 			render.write_board_title(resp, board);
 		// Have write_thread_html render the top pagination
@@ -374,7 +383,7 @@ function (req, resp) {
 		// Have write_thread_html append bottom pagination
 		yaku.emit('bottom');
 		if (!min)
-			render.write_page_end(resp, req.ident, alpha, lang);
+			render.write_page_end(resp, req.ident, lang);
 		resp.end();
 		yaku.disconnect();
 	});
@@ -421,14 +430,13 @@ function (req, resp) {
 
 	var board = this.board;
 	const min = req.query.minimal == 'true',
-		alpha = req.query.alpha == 'true',
 		cookies = web.parse_cookie(req.headers.cookie),
 		lang = config.LANGS.indexOf(cookies.lang) > -1 ? cookies.lang
 			: config.DEFAULT_LANG;
 	var nav = page_nav(this.threadCount, this.page, board == 'archive');
 	resp = write_gzip_head(req, resp, web.noCacheHeaders);
 	if (!min)
-		render.write_board_head(resp, board, nav, alpha, lang);
+		render.write_board_head(resp, board, nav, lang);
 	else
 		render.write_board_title(resp, board);
 
@@ -443,7 +451,7 @@ function (req, resp) {
 	this.yaku.once('end', function () {
 		self.yaku.emit('bottom');
 		if (!min)
-			render.write_page_end(resp, req.ident, alpha, lang);
+			render.write_page_end(resp, req.ident, lang);
 		resp.end();
 		self.finished();
 	});
@@ -529,7 +537,7 @@ web.resource(/^\/(\w+)\/(\d+)$/, function (req, params, cb) {
 		if (!config.DEBUG && preThread.hctr) {
 			// XXX: Always uses the hash of the default language in the etag
 			var etag = 'W/' + preThread.hctr + '-'
-				+ RES['alphaHash-' + config.DEFAULT_LANG];
+				+ RES['indexHash-' + config.DEFAULT_LANG];
 			var chunks = web.parse_cookie(req.headers.cookie);
 			var thumb = req.cookies.thumb;
 			if (thumb && common.thumbStyles.indexOf(thumb) >= 0)
@@ -576,7 +584,6 @@ function (req, resp) {
 
 	var board = this.board, op = this.op;
 	const min = req.query.minimal == 'true',
-		alpha = req.query.alpha == 'true',
 		cookies = web.parse_cookie(req.headers.cookie),
 		lang = config.LANGS.indexOf(cookies.lang) > -1 ? cookies.lang
 			: config.DEFAULT_LANG;
@@ -586,7 +593,6 @@ function (req, resp) {
 		render.write_thread_head(resp, board, op, {
 			subject: this.subject,
 			abbrev: this.abbrev,
-			alpha: alpha,
 			lang: lang
 		});
 	}
@@ -608,7 +614,7 @@ function (req, resp) {
 		// Have write_thread_html write the [Return][Top]
 		self.reader.emit('bottom');
 		if (!min)
-			render.write_page_end(resp, req.ident, alpha, lang);
+			render.write_page_end(resp, req.ident, lang);
 		resp.end();
 		self.finished();
 	});
@@ -667,27 +673,10 @@ web.resource(/^\/outbound\/(g|iqdb|sn)\/(\d+\.(?:jpg|png))$/,
 });
 
 web.resource(/^\/outbound\/(hash|exh)\/([\w+\/]{22}|[\w+\/]{40})$/, function (req, params, cb) {
-	var url = params[1] == 'hash' ? 'http://archive.foolz.us/_/search/image/' :
+	var url = params[1] == 'hash' ? 'http://archive.moe/_/search/image/' :
 		'http://exhentai.org/?fs_similar=1&fs_exp=1&f_shash=';
 	var dest = url + escape(params[2]);
 	cb(null, 303.1, dest);
-});
-
-web.resource(/^\/outbound\/a\/(\d{0,10})$/, function (req, params, cb) {
-	var thread = parseInt(params[1], 10);
-	if (thread)
-		cb(null, 'ok');
-	else
-		cb(null, 303.1, 'http://boards.4chan.org/a/');
-}, function (req, resp) {
-	resp.writeHead(200, web.noCacheHeaders);
-	resp.end(RES.aLookupHtml);
-});
-
-web.resource(/^\/outbound\/foolz\/(\d{0,10})$/, function (req, params, cb) {
-	var dest = 'http://archive.foolz.us/foolz/';
-	var thread = parseInt(params[1], 10);
-	cb(null, 303.1, thread ? dest+'thread/'+thread+'/' : dest);
 });
 
 web.route_get_auth(/^\/dead\/(src|thumb|mid)\/(\w+\.\w{3})$/,
@@ -696,7 +685,6 @@ web.route_get_auth(/^\/dead\/(src|thumb|mid)\/(\w+\.\w{3})$/,
 		return web.render_404(resp);
 	imager.send_dead_image(params[1], params[2], resp);
 });
-
 
 /* Must be prepared to receive callback instantly */
 function valid_links(frag, state, ident, callback) {
@@ -1052,7 +1040,13 @@ STATE.emitter.on('change:clientsByIP', function(){
 dispatcher[common.HOT_INJECTION] = function(msg, client){
 	if (!check(['boolean'], msg) || msg[0] !== true)
 		return false;
-	client.send([0, common.HOT_INJECTION, true, STATE.clientConfigHash, STATE.clientConfig]);
+	client.send([
+		0,
+		common.HOT_INJECTION,
+		true,
+		STATE.clientConfigHash,
+		STATE.clientHotConfig
+	]);
 	return true;
 };
 

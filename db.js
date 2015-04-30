@@ -2,15 +2,15 @@ var _ = require('underscore'),
     async = require('async'),
     cache = require('./server/state').dbCache,
     caps = require('./server/caps'),
-    common = require('./common'),
+    common = require('./common/index'),
     config = require('./config'),
     events = require('events'),
     fs = require('fs'),
-    hooks = require('./hooks'),
+    hooks = require('./util/hooks'),
     hot = require('./server/state').hot,
     imager = require('./imager'),
-    Muggle = require('./etc').Muggle,
-    tail = require('./tail'),
+    Muggle = require('./util/etc').Muggle,
+    tail = require('./util/tail'),
     util = require('util'),
     winston = require('winston');
 
@@ -393,7 +393,7 @@ Y.connect = function () {
 };
 
 Y.disconnect = function () {
-	this.removeAllListeners('end');
+	this.removeAllListeners();
 };
 
 function forEachInObject(obj, f, callback) {
@@ -446,6 +446,7 @@ Y.kikanai = function () {
 		}
 	});
 	this.subs = [];
+	return this;
 };
 
 function post_volume(view, body) {

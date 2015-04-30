@@ -1,3 +1,0 @@
-/*
- * Various page scrolling logic
- */

@@ -1,10 +1,12 @@
-var browserify = require('browserify'),
+var babelify = require('babelify'),
+	browserify = require('browserify'),
 	buffer = require('vinyl-buffer'),
 	concat = require('gulp-concat'),
 	debug = require('./config').DEBUG,
 	deps = require('./deps'),
 	gulp = require('gulp'),
 	gulpif = require('gulp-if'),
+	gutil = require('gulp-util'),
 	less = require('gulp-less'),
 	minifyCSS = require('gulp-minify-css'),
 	rename = require('gulp-rename'),
@@ -36,8 +38,8 @@ gulp.task('css', function() {
 		.pipe(gulp.dest('./state'));
 });
 
-gulp.task('alpha', function() {
-	return browserify(require.resolve('./alpha/main.js'), {
+gulp.task('client', function() {
+	var b = browserify(require.resolve('./client/main.js'), {
 		entry: true,
 		// Needed for sourcemaps
 		debug: true,
@@ -46,28 +48,34 @@ gulp.task('alpha', function() {
 			'jquery',
 			'underscore',
 			'backbone'
-		],
+		]
 	})
+		// Transpile to ES5
+		.transform(babelify.configure({
+			blacklist: [
+				'es6.constants',
+				'flow',
+				'react',
+				'reactCompat',
+				'regenerator'
+			]
+		}))
 		// Exclude these requires on the client
-		.exclude('./config')
-		.exclude('../../config')
-		.exclude('../../hot')
-		.exclude('./lang/')
-		.exclude('./server/state')
-		.exclude('./imager/config')
-		.exclude('./hot')
-		.bundle()
+		.exclude('../config')
+		.exclude('../lang/')
+		.exclude('../server/state');
+
+	return b.bundle()
 		// Transform into vinyl stream
-		.pipe(source('alpha.js'))
+		.pipe(source('client.js'))
 		.pipe(buffer())
 		.pipe(sourcemaps.init({loadMaps: true}))
 		.pipe(gulpif(!debug, uglify()))
+		.on('error', gutil.log)
 		.pipe(sourcemaps.write('./'))
 		.pipe(gulp.dest('./www/js'));
 });
 
 (function() {
-	gulper('client', deps.CLIENT_DEPS, './www/js');
-	gulper('vendor', deps.VENDOR_DEPS, './www/js');
-	gulper('mod', deps.MOD_CLIENT_DEPS, './state');
+	gulper('mod', deps.mod, './state');
 })();

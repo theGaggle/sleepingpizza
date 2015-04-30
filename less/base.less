@@ -37,7 +37,7 @@ article {
 		pointer-events: none;
 	}
 }
-body > aside {
+threads > aside {
 	margin: 1em;
 }
 .embed {
@@ -100,7 +100,8 @@ figure {
 	margin-right: 0;
 }
 h1 {
-	margin-top: 2em;
+	margin-top: 1em;
+	margin-bottom: 0.5em;
 }
 h1, h2 {
 	text-align: center;
@@ -124,6 +125,13 @@ h3 {
 		margin: auto auto;
 		display: block;
 	}
+}
+#loadingImage {
+	position: fixed;
+	z-index: 310;
+	right: 0;
+	bottom: 0;
+	display: none;
 }
 header {
 	background: url('ui/box.png') left 3px no-repeat;
@@ -469,13 +477,6 @@ figure {
 		text-decoration: none;
 	}
 }
-// Old client
-#shortcuts input {
-	border: none;
-	width: 2em;
-	margin-right: 1em;
-}
-// New client
 #options-panel .tab-4 input {
 	border: none;
 	width: 2em;

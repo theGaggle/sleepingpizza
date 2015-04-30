@@ -1,10 +1,9 @@
 var async = require('async'),
-	common = require('../common'),
-	config = require('./config'),
-	configMain = require('../config'),
+	common = require('../common/index'),
+	config = require('../config'),
 	crypto = require('crypto'),
 	child_process = require('child_process'),
-	etc = require('../etc'),
+	etc = require('../util/etc'),
 	Muggle = etc.Muggle,
 	imagerDb = require('./db'),
 	index = require('./'),
@@ -49,7 +48,7 @@ function get_thumb_specs(image, pinky, scale) {
 	var specs = {bound: bound, dims: dims, format: 'jpg'};
 	// Note: WebMs pretend to be PNGs at this step,
 	//       but those don't need transparent backgrounds.
-	//       (well... WebMs *can* have alpha channels...)
+	//       (well... WebMs *can* have client channels...)
 	if (config.PNG_THUMBS && image.ext == '.png' && !image.video) {
 		specs.format = 'png';
 		specs.quality = config.PNG_THUMB_QUALITY;
@@ -108,9 +107,9 @@ IU.handle_request = function (req, resp) {
 
 	// Set response language
 	// Check if client language is set and exixts on the server
-	this.lang = lang[configMain.LANGS[
+	this.lang = lang[config.LANGS[
 			web.parse_cookie(req.headers.cookie[lang])
-		] || configMain.DEFAULT_LANG];
+		] || config.DEFAULT_LANG];
 
 	this.client_id = parseInt(query.id, 10);
 	if (!this.client_id || this.client_id < 1) {

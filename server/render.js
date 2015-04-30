@@ -1,11 +1,10 @@
 var caps = require('./caps'),
-    common = require('../common'),
+	common = require('../common/index'),
 	config = require('../config'),
-    db = require('../db'),
-    imager = require('../imager'),
+	db = require('../db'),
 	lang = require('../lang/'),
-    STATE = require('./state'),
-    web = require('./web');
+	STATE = require('./state'),
+	web = require('./web');
 
 var RES = STATE.resources;
 var escape = common.escape_html;
@@ -60,7 +59,9 @@ exports.write_thread_html = function (reader, req, out, cookies, opts) {
 
 	// Top and bottom borders of the <threads> tag
 	// Chache pagination, as not to render twice
-	var pag;
+	var notReadOnly = !config.READ_ONLY
+			&& config.READ_ONLY_BOARDS.indexOf(opts.board) < 1,
+		pag;
 	reader.once('top', function(nav) {
 		// Navigation info is used to build pagination. None on thread pages
 		if (!nav)
@@ -70,6 +71,8 @@ exports.write_thread_html = function (reader, req, out, cookies, opts) {
 			out.write(pag);
 		}
 		out.write('<hr class="sectionHr">\n');
+		if (nav && notReadOnly)
+			out.write(oneeSama.newThreadBox());
 	});
 	reader.once('bottom', function() {
 		out.write(pag || threadsBottom(oneeSama));
@@ -99,6 +102,8 @@ exports.write_thread_html = function (reader, req, out, cookies, opts) {
 		};
 
 		reader.once('endthread', function() {
+			if (notReadOnly)
+				out.write(oneeSama.replyBox());
 			out.write('</section><hr class="sectionHr">\n');
 		});
 	});
@@ -120,7 +125,7 @@ function pagination(info, oneeSama) {
 		cur = info.cur_page;
 	var bits = '<nav class="pagination act">';
 	if (cur >= 0)
-		bits += `<a href=".">${live}</a>`;
+		bits += `<a href="." class="history">${live}</a>`;
 	else
 		bits += `<strong>${live}</strong>`;
 	var start = 0, end = info.pages, step = 1;
@@ -156,7 +161,7 @@ function threadsBottom(oneeSama) {
 }
 
 function make_link_rels(board, bits) {
-	var path = imager.config.MEDIA_URL + 'css/',
+	var path = config.MEDIA_URL + 'css/',
 		// Object of CSS versions
 		css = STATE.hot.css;
 
@@ -173,8 +178,8 @@ function make_link_rels(board, bits) {
 	}).join('');
 }
 
-exports.write_board_head = function (out, board, nav, alpha, language) {
-	var indexTmpl = alpha ? RES['alphaTmpl-' + language] : RES.indexTmpl;
+exports.write_board_head = function (out, board, nav, language) {
+	var indexTmpl = RES['indexTmpl-' + language];
 	var title = STATE.hot.TITLES[board] || escape(board);
 	var metaDesc = "Real-time imageboard";
 
@@ -187,18 +192,26 @@ exports.write_board_head = function (out, board, nav, alpha, language) {
 	out.write(make_board_meta(board, nav));
 	out.write(indexTmpl[i++]);
 	out.write(indexTmpl[i++]);
+	out.write(imageBanner());
 	out.write(title);
 	out.write(indexTmpl[i++]);
 };
 
+function imageBanner() {
+	var b = config.BANNERS;
+	if (!b)
+		return '';
+	return `<img id="imgBanner" src="${config.MEDIA_URL}banners/`
+		+ b[Math.floor(Math.random() * b.length)] + '"><br>';
+}
+
 exports.write_board_title = function(out, board){
 	var title = STATE.hot.TITLES[board] || escape(board);
-	out.write('<h1>'+title+'</h1>');
+	out.write(`<h1>${imageBanner()}${title}</h1>`);
 };
 
 exports.write_thread_head = function (out, board, op, opts) {
-	var indexTmpl = opts.alpha ? RES['alphaTmpl-' + opts.lang]
-		: RES.indexTmpl;
+	const indexTmpl = RES['indexTmpl-' + opts.lang];
 	var title = '/'+escape(board)+'/';
 	if (opts.subject)
 		title += ' - ' + escape(opts.subject) + ' (#' + op + ')';
@@ -215,6 +228,7 @@ exports.write_thread_head = function (out, board, op, opts) {
 	out.write(make_thread_meta(board, op, opts.abbrev));
 	out.write(indexTmpl[i++]);
 	out.write(indexTmpl[i++]);
+	out.write(imageBanner());
 	out.write(title);
 	out.write(indexTmpl[i++]);
 };
@@ -225,7 +239,7 @@ exports.write_thread_title = function(out, board, op, opts){
 		title += ' - ' + escape(opts.subject) + ' (#' + op + ')';
 	else
 		title += ' - #' + op;
-	out.write('<h1>'+title+'</h1>');
+	out.write(`<h1>${imageBanner()}${title}</h1>`);
 };
 
 function make_board_meta(board, info) {
@@ -242,8 +256,8 @@ function make_thread_meta(board, num, abbrev) {
 	return make_link_rels(board, bits);
 }
 
-exports.write_page_end = function (out, ident, alpha, language) {
-	const tmpl = alpha ? 'alphaTmpl-' + language : 'indexTmpl';
+exports.write_page_end = function (out, ident, language) {
+	const tmpl = 'indexTmpl-' + language;
 	out.write(RES[tmpl][RES[tmpl].length - 1]);
 	if (ident) {
 		if (caps.can_administrate(ident))

@@ -1,9 +1,9 @@
 var _ = require('underscore'),
 	async = require('async'),
 	caps = require('./caps'),
-    common = require('../common'),
+    common = require('../common/index'),
     events = require('events'),
-    Muggle = require('../etc').Muggle,
+    Muggle = require('../util/etc').Muggle,
     STATE = require('./state'),
     util = require('util'),
     winston = require('winston');
@@ -77,8 +77,8 @@ OK.on_message = function (data) {
 		return;
 	var func = dispatcher[type];
 	if (!func || !func(msg, this)) {
-		this.kotowaru(Muggle("Bad protocol.", new Error(
-				"Invalid message: " + JSON.stringify(data))));
+		this.kotowaru(Muggle("Bad protocol",
+			new Error("Invalid message: " + JSON.stringify(data))));
 	}
 };
 

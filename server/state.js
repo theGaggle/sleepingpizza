@@ -3,16 +3,14 @@ var _ = require('underscore'),
 	config = require('../config'),
 	crypto = require('crypto'),
 	fs = require('fs'),
-	hooks = require('../hooks'),
-	imager = require('../imager/config'),
+	hooks = require('../util/hooks'),
 	lang = require('../lang'),
-	options = require('../alpha/options/common'),
+	options = require('../common/options'),
 	path = require('path'),
-	report = require('../report/config'),
 	vm = require('vm');
 
 _.templateSettings = {
-	interpolate: /\{\{(.+?)\}\}/g
+	interpolate: /\{\{(.+?)}}/g
 };
 
 exports.emitter = new (require('events').EventEmitter);
@@ -24,18 +22,18 @@ exports.dbCache = {
 	YAKUMAN: 0,
 	funThread: 0,
 	addresses: {},
-	ranges: {},
+	ranges: {}
 };
 
 var HOT = exports.hot = {};
 var RES = exports.resources = {};
-exports.clientConfig = [];
+exports.clientHotConfig = {};
 exports.clientConfigHash = '';
 exports.clients = {};
 exports.clientsByIP = {};
 
 function reload_hot_config(cb) {
-	fs.readFile('hot.js', 'UTF-8', function (err, js) {
+	fs.readFile('./config/hot.js', 'UTF-8', function (err, js) {
 		if (err)
 			cb(err);
 		var hot = {};
@@ -72,19 +70,12 @@ function reload_hot_config(cb) {
 		reloadCSS(clientHot, function(err) {
 			if (err)
 				return cb(err);
-			HOT.CLIENT_CONFIG = JSON.stringify(clientConfig);
-			HOT.CLIENT_IMAGER = JSON.stringify(clientImager);
-			HOT.CLIENT_REPORT = JSON.stringify(clientReport);
+			HOT.CLIENT_CONFIG = clientConfig;
 			HOT.CLIENT_HOT = JSON.stringify(clientHot);
-			var combined = exports.clientConfig = [
-				clientConfig,
-				clientImager,
-				clientReport,
-				clientHot
-			];
+			// Hash the hot configuration
 			exports.clientConfigHash = HOT.CLIENT_CONFIG_HASH = crypto
 				.createHash('MD5')
-				.update(JSON.stringify(combined))
+				.update(JSON.stringify(clientHot))
 				.digest('hex');
 
 			read_exits('exits.txt', function() {
@@ -94,7 +85,7 @@ function reload_hot_config(cb) {
 	});
 }
 
-var clientConfig = _.pick(config,
+var clientConfig = JSON.stringify(_.pick(config,
 	'IP_MNEMONIC',
 	'USE_WEBSOCKETS',
 	'SOCKET_PATH',
@@ -106,42 +97,38 @@ var clientConfig = _.pick(config,
 	'PYU',
 	'BOARDS',
 	'LANGS',
-	'DEFAULT_LANG'
-);
-var clientImager = _.pick(imager,
+	'DEFAULT_LANG',
+	'READ_ONLY_BOARDS',
 	'WEBM',
 	'UPLOAD_URL',
 	'MEDIA_URL',
 	'THUMB_DIMENSIONS',
 	'PINKY_DIMENSIONS',
 	'SPOILER_IMAGES',
-	'IMAGE_HATS'
-);
-var clientReport = _.pick(report, 'RECAPTCHA_PUBLIC_KEY');
+	'IMAGE_HATS',
+	'ASSETS_DIR',
+	'BANNERS',
+	'RECAPTCHA_PUBLIC_KEY'
+));
 
-function reload_scripts(cb) {
-	async.mapSeries(['client', 'vendor', 'mod'], getRevision,
-		function(err, js) {
-			if (err)
-				return cb(err);
-			HOT.CLIENT_JS = js[0].client;
-			HOT.VENDOR_JS = js[1].vendor;
-			// Read moderator js file
-			fs.readFile(path.join('state', js[2].mod), 'UTF-8',
-				function (err, modSrc) {
-					if (err)
-						return cb(err);
-					RES.modJs = modSrc;
-					cb(null);
-				}
-			);
-		}
-	);
+function reloadModClient(cb) {
+	getRevision('mod', function(err, js) {
+		if (err)
+			return cb(err);
+		// Read moderator js file
+		fs.readFile(path.join('state', js.mod), 'UTF-8',
+			function (err, modSrc) {
+				if (err)
+					return cb(err);
+				RES.modJs = modSrc;
+				cb(null);
+			}
+		);
+	});
 }
 
-// TEMP: Non-DRY for now. Seperated for the new client.
-function reload_alpha_client(cb) {
-	var stream = fs.createReadStream('./www/js/alpha.js'),
+function reloadClient(cb) {
+	var stream = fs.createReadStream('./www/js/client.js'),
 		hash = crypto.createHash('md5');
 	stream.once('error', function(err) {
 		cb(err);
@@ -150,7 +137,7 @@ function reload_alpha_client(cb) {
 		hash.update(data);
 	});
 	stream.once('end', function() {
-		HOT.ALPHA_HASH = hash.digest('hex').slice(0, 8);
+		HOT.CLIENT_HASH = hash.digest('hex').slice(0, 8);
 		cb(null);
 	});
 }
@@ -178,7 +165,7 @@ function reloadCSS(hot, cb) {
 		if (err)
 			return cb(err);
 		// Only the curfew template is statically assigned a CSS file. The rest
-		// are inserted per request in server/render.js and www/js/setup.js
+		// are inserted per request in server/render.js
 		HOT.CURFEW_CSS = files['curfew.css'];
 		// Export to these modules and client
 		HOT.css = hot.css = files;
@@ -204,20 +191,17 @@ function read_templates(cb) {
 
 	async.parallel({
 		index: read('tmpl', 'index.html'),
-		alpha: read('tmpl', 'alpha.html'),
-		filter: read('tmpl', 'filter.html'),
 		login: read('tmpl', 'login.html'),
 		curfew: read('tmpl', 'curfew.html'),
 		suspension: read('tmpl', 'suspension.html'),
-		aLookup: read('tmpl', 'alookup.html'),
 		notFound: read('www', '404.html'),
-		serverError: read('www', '50x.html'),
+		serverError: read('www', '50x.html')
 	}, cb);
 }
 
 function expand_templates(res) {
 	var templateVars = _.clone(HOT);
-	_.extend(templateVars, imager, config, make_navigation_html());
+	_.extend(templateVars, config, make_navigation_html());
 
 	templateVars.SCHEDULE = build_schedule(templateVars.SCHEDULE);
 	templateVars.FAQ = build_FAQ(templateVars.FAQ);
@@ -233,13 +217,11 @@ function expand_templates(res) {
 	}
 
 	var ex = {
-		filterTmpl: tmpl(res.filter).tmpl,
 		curfewTmpl: tmpl(res.curfew).tmpl,
 		suspensionTmpl: tmpl(res.suspension).tmpl,
 		loginTmpl: tmpl(res.login).tmpl,
-		aLookupHtml: res.aLookup,
 		notFoundHtml: res.notFound,
-		serverErrorHtml: res.serverError,
+		serverErrorHtml: res.serverError
 	};
 
 	// Build index templates for each language
@@ -249,20 +231,20 @@ function expand_templates(res) {
 		_.extend(templateVars, lang[ln].tmpl);
 		// Build localised options panel
 		templateVars.options_panel = buildOptions(lang[ln].opts);
-		templateVars.lang = JSON.stringify(lang[ln].common);
-		html = tmpl(res.alpha);
-		ex['alphaTmpl-' + ln] = html.tmpl;
+
+		// Inject language pack
+		templateVars.lang = {};
+		for (var key in lang[ln].common) {
+			// Coerce to string, because you can not JSON.stringify() functions
+			templateVars.lang[key] = lang[ln].common[key].toString();
+		}
+		templateVars.lang = JSON.stringify(templateVars.lang);
+
+		html = tmpl(res.index);
+		ex['indexTmpl-' + ln] = html.tmpl;
 		hash = crypto.createHash('md5').update(html.src);
-		ex['alphaHash-' + ln] = hash.digest('hex').slice(0, 8)
+		ex['indexHash-' + ln] = hash.digest('hex').slice(0, 8)
 	});
-
-	// Legacy client template
-	var html, hash;
-	html = tmpl(res.index);
-	ex.indexTmpl = html.tmpl;
-	hash = crypto.createHash('md5').update(html.src);
-	ex.indexHash = hash.digest('hex').slice(0, 8);
-
 	return ex;
 }
 
@@ -299,7 +281,6 @@ function build_FAQ(faq){
 function buildOptions(lang) {
 	var html = '<div class="bmodal" id="options-panel">'
 		+ '<ul class="option_tab_sel">';
-	;
 	lang.tabs.forEach(function(tab, index) {
 		html += `<li><a data-content="tab-${index}"`;
 		// Highlight the first tabButt by default
@@ -345,7 +326,7 @@ function buildOptions(lang) {
 			else
 				html += '<select';
 			// Custom localisation functions
-			var title, tooltip;
+			var title, label;
 			if (opt.lang) {
 				title = lang[opt.lang][1](opt.id);
 				label = lang[opt.lang][0](opt.id);
@@ -383,9 +364,9 @@ function buildOptions(lang) {
 exports.reload_hot_resources = function (cb) {
 	async.series([
 		reload_hot_config,
-		reload_scripts,
-		reload_alpha_client,
-		reload_resources,
+		reloadModClient,
+		reloadClient,
+		reload_resources
 	], cb);
 };
 
