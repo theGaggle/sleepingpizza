@@ -1,3 +1,5 @@
+'use strict';
+
 var async = require('async'),
 	common = require('../common/index'),
 	config = require('../config'),
@@ -393,12 +395,10 @@ function identify(stream, cb) {
 			const m = out.toString().trim().match(/ (\d+)x(\d+)/);
 			if (!m)
 				return cb('dims_fail');
-			else {
-				return cb(null, {
-					width: parseInt(m[1], 10),
-					height: parseInt(m[2], 10)
-				});
-			}
+			return cb(null, {
+				width: parseInt(m[1], 10),
+				height: parseInt(m[2], 10)
+			});
 		}
 	);
 }
@@ -735,15 +735,16 @@ IU.failure = function (err) {
 IU.record_image = function (tmps) {
 	if (this.failed)
 		return;
-	var view = {};
-	var self = this;
-	index.image_attrs.forEach(function (key) {
-		if (key in self.image)
-			view[key] = self.image[key];
-	});
+	let view = {};
+	for (let i = 0, l = index.image_attrs.length; i < l; i++) {
+		let key = index.image_attrs[i];
+		if (key in this.image)
+			view[key] = this.image[key];
+	}
 	view.pinky = this.pinky;
-	var image_id = common.random_id().toFixed();
-	var alloc = {image: view, tmps: tmps};
+	const image_id = common.random_id().toFixed(),
+		alloc = {image: view, tmps: tmps};
+	let self = this;
 	this.db.record_image_alloc(image_id, alloc, function (err) {
 		if (err)
 			return this.failure("Image storage failure.");
@@ -751,11 +752,8 @@ IU.record_image = function (tmps) {
 		self.db.disconnect();
 		self.respond(202, 'OK');
 
-		if (index.is_standalone()) {
-			var where = view.src;
-			var size = Math.ceil(view.size / 1000) + 'kb';
-			winston.info('upload: ' + where + ' ' + size);
-		}
+		if (index.is_standalone())
+			winston.info(`upload: ${view.src} ${Math.ceil(view.size / 1000)}kb`);
 	});
 };
 

@@ -8,6 +8,13 @@ var imports = require('./imports'),
 	index = require('./index'),
 	util = require('./util');
 
+const config = imports.config,
+	flatten = util.flatten,
+	new_tab_link = util.new_tab_link,
+	pad = util.pad,
+	parseHTML = util.parseHTML,
+	safe = util.safe;
+
 var OneeSama = function(t) {
 	this.tamashii = t;
 	this.hooks = {};
@@ -24,8 +31,8 @@ ref_re += '|>\\/watch\\?v=[\\w-]{11}(?:#t=[\\dhms]{1,9})?';
 ref_re += '|>\\/soundcloud\\/[\\w-]{1,40}\\/[\\w-]{1,80}';
 ref_re += '|>\\/pastebin\\/\\w+';
 
-for (var i = 0; i < imports.config.BOARDS.length; i++) {
-	ref_re += '|>\\/' + imports.config.BOARDS[i] + '\\/(?:\\d+)?';
+for (var i = 0; i < config.BOARDS.length; i++) {
+	ref_re += '|>\\/' + config.BOARDS[i] + '\\/(?:\\d+)?';
 }
 
 ref_re += ')';
@@ -50,7 +57,7 @@ OS.trigger = function(name, param) {
  * Language mappings and settings. Overriden by cookie server-side and
  * bootstraped into the template client-side
  */
-OS.lang = imports.isNode ? imports.lang[imports.config.DEFAULT_LANG].common
+OS.lang = imports.isNode ? imports.lang[config.DEFAULT_LANG].common
 	: imports.lang;
 
 OS.red_string = function(ref) {
@@ -69,9 +76,8 @@ OS.red_string = function(ref) {
 	}
 
 	// Linkify >>>/board/ URLs
-	var board;
-	for (var i = 0; i < imports.config.BOARDS.length; i++) {
-		board = imports.config.BOARDS[i];
+	for (let i = 0, len = config.BOARDS.length; i < len; i++) {
+		let board = config.BOARDS[i];
 		if (!new RegExp('^>\\/' + board + '\\/').test(ref))
 			continue;
 		dest = '../' + board;
@@ -83,23 +89,23 @@ OS.red_string = function(ref) {
 		this.tamashii(parseInt(ref, 10));
 		return;
 	}
-	this.callback(util.new_tab_link(encodeURI(dest), '>>' + ref, linkClass));
+	this.callback(new_tab_link(encodeURI(dest), '>>' + ref, linkClass));
 };
 
 OS.break_heart = function(frag) {
 	if (frag.safe)
 		return this.callback(frag);
-	var bits = frag.split(break_re);
-	for (var i = 0; i < bits.length; i++) {
+	let bits = frag.split(break_re);
+	for (let i = 0, len = bits.length; i < len; i++) {
 		/* anchor refs */
-		var morsels = bits[i].split(ref_re);
-		for (var j = 0; j < morsels.length; j++) {
-			var m = morsels[j];
+		const morsels = bits[i].split(ref_re);
+		for (let j = 0, len = morsels.length; j < len; j++) {
+			const m = morsels[j];
 			if (j % 2)
 				this.red_string(m);
 			else if (i % 2) {
 				this.geimu(m);
-				this.callback(util.safe('<wbr>'));
+				this.callback(safe('<wbr>'));
 			}
 			else
 				this.geimu(m);
@@ -108,13 +114,13 @@ OS.break_heart = function(frag) {
 };
 
 OS.iku = function(token, to) {
-	var state = this.state;
+	let state = this.state;
 	if (state[0] == index.S_QUOTE && to != index.S_QUOTE)
-		this.callback(util.safe('</em>'));
+		this.callback(safe('</em>'));
 	switch(to) {
 		case index.S_QUOTE:
 			if (state[0] != index.S_QUOTE) {
-				this.callback(util.safe('<em>'));
+				this.callback(safe('<em>'));
 				state[0] = index.S_QUOTE;
 			}
 			this.break_heart(token);
@@ -122,12 +128,12 @@ OS.iku = function(token, to) {
 		case index.S_SPOIL:
 			if (token[1] == '/') {
 				state[1]--;
-				this.callback(util.safe('</del>'));
+				this.callback(safe('</del>'));
 			}
 			else {
-				var del = {html: '<del>'};
+				const del = {html: '<del>'};
 				this.trigger('spoilerTag', del);
-				this.callback(util.safe(del.html));
+				this.callback(safe(del.html));
 				state[1]++;
 			}
 			break;
@@ -139,27 +145,27 @@ OS.iku = function(token, to) {
 };
 
 OS.fragment = function(frag) {
-	var chunks = frag.split(/(\[\/?spoiler])/i);
-	var state = this.state;
-	for (var i = 0; i < chunks.length; i++) {
-		var chunk = chunks[i], q = (state[0] === index.S_QUOTE);
+	const chunks = frag.split(/(\[\/?spoiler])/i);
+	let state = this.state;
+	const	q = state[0] === index.S_QUOTE;
+	for (let i = 0, len = chunks.length; i < len; i++) {
+		let chunk = chunks[i];
 		if (i % 2) {
-			var to = index.S_SPOIL;
+			let to = index.S_SPOIL;
 			if (chunk[1] == '/' && state[1] < 1)
 				to = q ? index.S_QUOTE : index.S_NORMAL;
 			this.iku(chunk, to);
 			continue;
 		}
-		var lines = chunk.split(/(\n)/);
-		for (var l = 0; l < lines.length; l++) {
-			var line = lines[l];
+		const lines = chunk.split(/(\n)/);
+		for (let l = 0, len = lines.length; l < len; l++) {
+			const line = lines[l];
 			if (l % 2)
-				this.iku(util.safe('<br>'), index.S_BOL);
+				this.iku(safe('<br>'), index.S_BOL);
 			else if (state[0] === index.S_BOL && line[0] == '>')
 				this.iku(line, index.S_QUOTE);
 			else if (line)
-				this.iku(line, q ? index.S_QUOTE
-					: index.S_NORMAL);
+				this.iku(line, q ? index.S_QUOTE : index.S_NORMAL);
 		}
 	}
 };
@@ -173,9 +179,9 @@ OS.karada = function(body) {
 	this.fragment(body);
 	this.callback = null;
 	if (this.state[0] == index.S_QUOTE)
-		output.push(util.safe('</em>'));
-	for (var i = 0; i < this.state[1]; i++)
-		output.push(util.safe('</del>'));
+		output.push(safe('</em>'));
+	for (let i = 0; i < this.state[1]; i++)
+		output.push(safe('</del>'));
 	return output;
 };
 
@@ -185,39 +191,36 @@ OS.geimu = function(text) {
 		return;
 	}
 
-	var bits = text.split(util.dice_re);
-	for (var i = 0; i < bits.length; i++) {
-		var bit = bits[i];
-		if (!(i % 2) || !util.parse_dice(bit)) {
+	const bits = text.split(util.dice_re);
+	for (let i = 0, len = bits.length; i < len; i++) {
+		const bit = bits[i];
+		if (!(i % 2) || !util.parse_dice(bit))
 			this.eLinkify ? this.linkify(bit) : this.callback(bit);
-		}
-		else if (this.queueRoll) {
+		else if (this.queueRoll)
 			this.queueRoll(bit);
-		}
-		else if (!this.dice[0]) {
+		else if (!this.dice[0])
 			this.eLinkify ? this.linkify(bit) : this.callback(bit);
-		}
 		else {
-			var d = this.dice.shift();
-			this.callback(util.safe('<strong>'));
+			let d = this.dice.shift();
+			this.callback(safe('<strong>'));
 			this.strong = true; // for client DOM insertion
 			this.callback(util.readable_dice(bit, d));
 			this.strong = false;
-			this.callback(util.safe('</strong>'));
+			this.callback(safe('</strong>'));
 		}
 	}
 };
 
 OS.linkify = function(text) {
 
-	var bits = text.split(/(https?:\/\/[^\s"<>]*[^\s"<>'.,!?:;])/);
-	for (var i = 0; i < bits.length; i++) {
+	let bits = text.split(/(https?:\/\/[^\s"<>]*[^\s"<>'.,!?:;])/);
+	for (let i = 0, len = bits.length; i < len; i++) {
 		if (i % 2) {
-			var e = util.escape_html(bits[i]);
+			const e = util.escape_html(bits[i]);
 			// open in new tab, and disavow target
-			this.callback(util.safe('<a href="' + e +
-				'" rel="nofollow" target="_blank">' +
-				e + '</a>'));
+			this.callback(safe(
+				`<a href="${e}" rel="nofollow" target="_blank">${e}</a>`
+			));
 		}
 		else
 			this.callback(bits[i]);
@@ -228,18 +231,18 @@ OS.spoiler_info = function(ind, toppu) {
 	var large = toppu;
 	var hd = toppu || this.thumbStyle != 'small';
 	return {
-		thumb: encodeURI(imports.config.MEDIA_URL + 'spoil/spoiler' + (hd
+		thumb: encodeURI(config.MEDIA_URL + 'spoil/spoiler' + (hd
 				? ''
 				: 's')
 			+ ind + '.png'),
-		dims: large ? imports.config.THUMB_DIMENSIONS
-			: imports.config.PINKY_DIMENSIONS
+		dims: large ? config.THUMB_DIMENSIONS
+			: config.PINKY_DIMENSIONS
 	};
 };
 
 OS.image_paths = function() {
 	if (!this._imgPaths) {
-		var mediaURL = imports.config.MEDIA_URL;
+		var mediaURL = config.MEDIA_URL;
 		this._imgPaths = {
 			src: mediaURL + 'src/',
 			thumb: mediaURL + 'thumb/',
@@ -260,9 +263,9 @@ OS.gazou = function(info, toppu) {
 		google = encodeURI('../outbound/g/' + info.vint);
 		iqdb = encodeURI('../outbound/iqdb/' + info.vint);
 		caption = [
-			this.lang.search + ' ', util.new_tab_link(google, '[Google]'), ' ',
-			util.new_tab_link(iqdb, '[iqdb]'), ' ',
-			util.new_tab_link(src, '[foolz]')
+			this.lang.search + ' ', new_tab_link(google, '[Google]'), ' ',
+			new_tab_link(iqdb, '[iqdb]'), ' ',
+			new_tab_link(src, '[foolz]')
 		];
 	}
 	else {
@@ -273,13 +276,13 @@ OS.gazou = function(info, toppu) {
 		var exhentai = encodeURI('../outbound/exh/' + info.SHA1);
 		src = encodeURI(this.image_paths().src + info.src);
 		caption = [
-			util.new_tab_link(src, (this.thumbStyle == 'hide') ? '[Show]'
+			new_tab_link(src, (this.thumbStyle == 'hide') ? '[Show]'
 				: info.src, 'imageSrc'), ' ',
-			util.new_tab_link(google, 'G', 'imageSearch google', true),
-			util.new_tab_link(iqdb, 'Iq', 'imageSearch iqdb', true),
-			util.new_tab_link(saucenao, 'Sn', 'imageSearch saucenao', true),
-			util.new_tab_link(foolz, 'Fz', 'imageSearch foolz', true),
-			util.new_tab_link(exhentai, 'Ex', 'imageSearch exhentai', true)
+			new_tab_link(google, 'G', 'imageSearch google', true),
+			new_tab_link(iqdb, 'Iq', 'imageSearch iqdb', true),
+			new_tab_link(saucenao, 'Sn', 'imageSearch saucenao', true),
+			new_tab_link(foolz, 'Fz', 'imageSearch foolz', true),
+			new_tab_link(exhentai, 'Ex', 'imageSearch exhentai', true)
 		];
 	}
 
@@ -288,23 +291,18 @@ OS.gazou = function(info, toppu) {
 
 	// We need da data for da client to walk da podium
 	return [
-		util.safe('<figure data-img="'), (imports.isNode ? escapeJSON(info) : ''),
-		util.safe('"><figcaption>'),
-		caption, util.safe(' <i>('),
+		safe('<figure><figcaption>'),
+		caption, safe(' <i>('),
 		info.audio ? ("\u266B" + ', ') : '', // musical note
 		info.length ? (info.length + ', ') : '',
 		util.readable_filesize(info.size), ', ',
 		dims, (info.apng ? ', APNG' : ''),
 		this.full ? [', ', chibi(info.imgnm, img.src)] : '',
-		util.safe(')</i></figcaption>'),
+		safe(')</i></figcaption>'),
 		this.thumbStyle == 'hide' ? '' : img.html,
-		util.safe('</figure>\n\t')
+		safe('</figure>\n\t')
 	];
 };
-
-function escapeJSON(obj) {
-	return encodeURIComponent(JSON.stringify(obj));
-}
 
 function chibi(imgnm, src) {
 	var name = '', ext = '';
@@ -313,12 +311,12 @@ function chibi(imgnm, src) {
 		name = m[1];
 		ext = m[2];
 	}
-	var bits = [util.safe('<a href="'), src, util.safe('" download="'), imgnm];
+	var bits = [safe('<a href="'), src, safe('" download="'), imgnm];
 	if (name.length >= 38) {
-		bits.push(util.safe('" title="'), imgnm);
-		imgnm = [name.slice(0, 30), util.safe('(&hellip;)'), ext];
+		bits.push(safe('" title="'), imgnm);
+		imgnm = [name.slice(0, 30), safe('(&hellip;)'), ext];
 	}
-	bits.push(util.safe('" rel="nofollow">'), imgnm, util.safe('</a>'));
+	bits.push(safe('" rel="nofollow">'), imgnm, safe('</a>'));
 	return bits;
 }
 
@@ -359,54 +357,16 @@ OS.gazou_img = function(info, toppu, href) {
 		img += ' width="' + tw + '" height="' + th + '">';
 	else
 		img += '>';
-	if (imports.config.IMAGE_HATS)
+	if (config.IMAGE_HATS)
 		img = '<span class="hat"></span>' + img;
 	// Override src with href, if specified
-	img = util.new_tab_link(href || src, util.safe(img));
+	img = new_tab_link(href || src, safe(img));
 	return {html: img, src: src};
 };
 
-OS.readable_time = function(time) {
-	var h = this.tz_offset;
-	var offset;
-	if (h || h == 0)
-		offset = h * 60 * 60 * 1000;
-	else
-	// XXX: would be nice not to construct new Dates all the time
-		offset = new Date().getTimezoneOffset() * -60 * 1000;
-
-	return this.readableDate(new Date(time + offset));
-};
-
-OS.readableDate = function(d) {
-	return util.pad(d.getUTCDate()) + ' ' + this.lang.year[d.getUTCMonth()] + ' '
-		+ d.getUTCFullYear() + '(' + this.lang.week[d.getUTCDay()] + ')'
-		+ util.pad(d.getUTCHours()) + ':' + util.pad(d.getUTCMinutes());
-};
-
-// Readable elapsed time since post
-OS.relative_time = function(then, now) {
-	var min = Math.floor((now - then) / (60 * 1000)),
-		ago = this.lang.ago;
-	if (min < 1)
-		return this.lang.just_now;
-	if (min < 60)
-		return ago(min, this.lang.unit_minute);
-	var hours = Math.floor(min / 60);
-	if (hours < 24)
-		return ago(hours, this.lang.unit_hour);
-	var days = Math.floor(hours / 24);
-	if (days < 30)
-		return ago(days, this.lang.unit_day);
-	var months = Math.floor(days / 30);
-	if (months < 12)
-		return ago(months, this.lang.unit_month);
-	return ago(Math.floor(months / 12), this.lang.unit_year);
-};
-
-OS.post_url = function(num, op, quote) {
+OS.post_url = function(num, op) {
 	op = op || num;
-	return (this.op == op ? '' : op) + (quote ? '#q' : '#') + num;
+	return `${this.op == op ? '' : op}#${num}`;
 };
 
 OS.post_ref = function(num, op, desc_html) {
@@ -417,88 +377,139 @@ OS.post_ref = function(num, op, desc_html) {
 		ref += ' \u2192';
 	else if (num == op && this.op == op)
 		ref += ' (OP)';
-	return util.safe('<a href="' + this.post_url(num, op, false) + '"'
-		+ ' class="history">' + ref + '</a>');
+	return safe(
+		`<a href="${this.post_url(num, op)}" class="history">${ref}</a>`
+	);
 };
 
 OS.post_nav = function(post) {
-	var n = post.num, o = post.op;
-	return util.safe('<nav><a href="' + this.post_url(n, o, false) +
-		'">No.</a><a href="' + this.post_url(n, o, true) +
-		'">' + n + '</a></nav>');
+	const n = post.num;
+	var o = post.op;
+	return safe(parseHTML
+		`<nav>
+			<a href="${this.post_url(n, o)}" class="history">No.</a>
+			<a href="${this.post_url(n, o)}" class="quote">${n}</a>
+		</nav>`
+	);
 };
 
 OS.expansion_links_html = function(num) {
-	return ' &nbsp; ' + util.action_link_html(num, this.lang.expand, null,
-			'history')
+	return ' &nbsp; '
+		+ util.action_link_html(num, this.lang.expand, null, 'history')
 		+ ' '
-		+ util.action_link_html(num + '?last=' + this.lastN,
-			this.lang.last + '&nbsp;' + this.lastN, null, 'history');
+		+ util.action_link_html(`${num}?last=${this.lastN}`,
+			`${this.lang.last}&nbsp;${this.lastN}`,
+			null,
+			'history'
+		);
 };
 
 OS.atama = function(data) {
 	var auth = data.auth;
 	var header = auth ? [
-		util.safe('<b class="'),
+		safe('<b class="'),
 		auth.toLowerCase(),
-		util.safe('">')
+		safe('">')
 	]
-		: [util.safe('<b>')];
+		: [safe('<b>')];
 	if (data.subject)
-		header.unshift(util.safe('<h3>「'), data.subject, util.safe('」</h3> '));
+		header.unshift(safe('<h3>「'), data.subject, safe('」</h3> '));
 	if (data.name || !data.trip) {
 		header.push(data.name || this.lang.anon);
 		if (data.trip)
 			header.push(' ');
 	}
 	if (data.trip)
-		header.push(util.safe('<code>' + data.trip + '</code>'));
+		header.push(safe(`<code>'${data.trip}</code>`));
 	if (auth)
 		header.push(' ## ' + (auth == 'Admin' ? imports.hotConfig.ADMIN_ALIAS
 				: imports.hotConfig.MOD_ALIAS));
 	this.trigger('headerName', {header: header, data: data});
-	header.push(util.safe('</b>'));
+	header.push(safe('</b>'));
 	if (data.email) {
-		header.unshift(util.safe('<a class="email" href="mailto:'
-			+ encodeURI(data.email) + '" target="_blank">'));
-		header.push(util.safe('</a>'));
+		header.unshift(safe(parseHTML
+			`<a class="email"
+				href="mailto:${encodeURI(data.email)}"
+				target="_blank">
+			</a>`
+		));
 	}
-	// Format according to client's relative post timestamp setting
-	var title = this.rTime ? this.readable_time(data.time) : '';
-	var text = this.rTime ? this.relative_time(data.time, new Date().getTime())
-		: this.readable_time(data.time);
-	header.push(util.safe(' <time datetime="' + datetime(data.time) + '"' +
-			'title="' + title + '"' +
-			'>' + text + '</time> '),
-		this.post_nav(data));
+	header.push(' ', safe(this.time(data.time)), ' ', this.post_nav(data));
 	if (!this.full && !data.op) {
 		var ex = this.expansion_links_html(data.num);
-		header.push(util.safe(ex));
+		header.push(safe(ex));
 	}
 	this.trigger('headerFinish', {header: header, data: data});
-	header.unshift(util.safe('<header>'));
-	header.push(util.safe('</header>\n\t'));
+	header.unshift(safe('<header>'));
+	header.push(safe('</header>\n\t'));
 	return header;
+};
+
+OS.time = function(time) {
+	// Format according to client's relative post timestamp setting
+	var title, text;
+	if (this.rTime) {
+		title = this.readable_time(time);
+		text = this.relative_time(time, Date.now());
+	}
+	else {
+		title = '';
+		text = this.readable_time(time);
+	}
+	return parseHTML
+		`<time datetime="${datetime(time)}" title="${title}">
+			${text}
+		</time>`;
 };
 
 function datetime(time) {
 	var d = new Date(time);
-	return (d.getUTCFullYear() + '-' + util.pad(d.getUTCMonth() + 1) + '-'
-	+ util.pad(d.getUTCDate()) + 'T' + util.pad(d.getUTCHours()) + ':'
-	+ util.pad(d.getUTCMinutes()) + ':' + util.pad(d.getUTCSeconds()) + 'Z');
+	return (d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-'
+	+ pad(d.getUTCDate()) + 'T' + pad(d.getUTCHours()) + ':'
+	+ pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds()) + 'Z');
 }
+
+OS.readable_time = function(time) {
+	var h = this.tz_offset;
+	var offset;
+	if (h || h == 0)
+		offset = h * 60 * 60 * 1000;
+	else
+	// XXX: would be nice not to construct new Dates all the time
+		offset = new Date().getTimezoneOffset() * -60 * 1000;
+	var d = new Date(time + offset);
+
+	return parseHTML
+		`${pad(d.getUTCDate())} ${this.lang.year[d.getUTCMonth()]}
+		 ${d.getUTCFullYear()}(${this.lang.week[d.getUTCDay()]})
+		${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+};
+
+// Readable elapsed time since post
+OS.relative_time = function(then, now) {
+	let time = Math.floor((now - then) / 60000);
+	if (time < 1)
+		return this.lang.just_now;
+
+	const divide = [60, 24, 30, 12],
+		unit = ['minute', 'hour', 'day', 'month'];
+	for (let i = 0, len = divide.length; i < len; i++) {
+		if (time < divide[i])
+			return this.lang.ago(time, this.lang['unit_' + unit[i]]);
+		time = Math.floor(time / divide[i]);
+	}
+
+	return this.lang.ago(time, this.lang.unit_year);
+};
 
 OS.monogatari = function(data, toppu) {
 	var tale = {header: this.atama(data)};
 	this.dice = data.dice;
 	var body = this.karada(data.body);
 	tale.body = [
-		util.safe(
-			'<blockquote' +
-			(imports.isNode ? ' data-body="' + escapeJSON(data.body) + '"'
-				: '') + '>'),
-		body, util.safe('</blockquote>'
-		)
+		safe('<blockquote>'),
+		body,
+		safe('</blockquote>')
 	];
 	if (data.image && !data.hideimg)
 		tale.image = this.gazou(data.image, toppu);
@@ -513,31 +524,29 @@ OS.mono = function(data) {
 	};
 	this.trigger('openArticle', info);
 	var cls = info.classes.length && info.classes.join(' '),
-		o = util.safe('\t<article id="' + data.num + '"' +
+		o = safe('\t<article id="' + data.num + '"' +
 			(cls ? ' class="' + cls + '"' : '') +
 			(info.style ? ' style="' + info.style + '"' : '') +
 			'>'),
-		c = util.safe('</article>\n'),
+		c = safe('</article>\n'),
 		gen = this.monogatari(data, false);
-	return util.flatten([o, gen.header, gen.image || '', gen.body, c]).join('');
+	return flatten([o, gen.header, gen.image || '', gen.body, c]).join('');
 };
 
 OS.monomono = function(data, cls) {
 	if (data.locked)
 		cls = cls ? cls + ' locked' : 'locked';
-	var o = util.safe('<section id="' + data.num +
-			(cls ? '" class="' + cls : '') +
-			'" data-sync="' + (data.hctr || 0) +
-			(data.full ? '' : '" data-imgs="' + data.imgctr) + '">'),
-		c = util.safe('</section>\n'),
+	var o = safe(`<section id="${data.num}"`
+			+ (cls ? ` class="${cls}"` : '') + '>'),
+		c = safe('</section>\n'),
 		gen = this.monogatari(data, true);
-	return util.flatten([o, gen.image || '', gen.header, gen.body, '\n', c]);
+	return flatten([o, gen.image || '', gen.header, gen.body, '\n', c]);
 };
 
 OS.replyBox = function() {
-	return '<aside class="act"><a>' + this.lang.reply + '</a></aside>';
+	return `<aside class="act"><a>${this.lang.reply}</a></aside>`;
 };
 
 OS.newThreadBox = function() {
-	return '<aside class="act"><a>' + this.lang.newThread + '</a></aside>';
+	return `<aside class="act"><a>${this.lang.newThread}</a></aside>`;
 };

@@ -31,22 +31,23 @@ var reload_state = _.debounce(function() {
 		server.kill('SIGHUP');
 }, 2000);
 
-watch(deps.client, function() {
-	build(['client'], reload_state);
+['client', 'css', 'mod'].forEach(function(task) {
+	watch(deps[task], _.debounce(function() {
+		build([task], reload_state);
+	}), 5000);
 });
-watch(deps.css, function() {
-	build(['css'], reload_state);
-});
-watch(deps.mod, function() {
-	build(['mod'], reload_state);
-});
+
+
 watch(deps.state, reload_state);
+
+const serverExclude = new RegExp('\\.pid$|hot.js$|admin\\/client.js$|'
+	+ config.MEDIA_DIRS.tmp.replace('/', '\\/'));
 watch(deps.server, function(file) {
 	/*
 	 PID file is generated each start and `hot.js` should only triigger a
 	 reaload.
 	 */
-	if (!/\.pid$|hot\.js$/.test(file))
+	if (!serverExclude.test(file))
 		start_server();
 });
 

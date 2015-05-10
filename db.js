@@ -1,20 +1,21 @@
+'use strict';
+
 var _ = require('underscore'),
     async = require('async'),
     cache = require('./server/state').dbCache,
     caps = require('./server/caps'),
-    common = require('./common/index'),
+    common = require('./common'),
     config = require('./config'),
     events = require('events'),
     fs = require('fs'),
     hooks = require('./util/hooks'),
     hot = require('./server/state').hot,
+// set up hooks
     imager = require('./imager'),
     Muggle = require('./util/etc').Muggle,
     tail = require('./util/tail'),
     util = require('util'),
     winston = require('winston');
-
-var imager = require('./imager'); /* set up hooks */
 
 var OPs = exports.OPs = cache.OPs;
 var TAGS = exports.TAGS = cache.opTags;
@@ -51,7 +52,7 @@ function Subscription(targetInfo) {
 		this.k.subscribe(this.fullKey);
 		this.pending_subscriptions.push(this.fullKey);
 	}
-};
+}
 
 util.inherits(Subscription, events.EventEmitter);
 var S = Subscription.prototype;
@@ -89,14 +90,15 @@ S.on_one_sub = function (name) {
 };
 
 S.on_all_subs = function () {
-	var k = this.k;
+	let k = this.k;
 	k.removeAllListeners('subscribe');
 	k.on('message', this.on_message.bind(this));
 	k.removeAllListeners('error');
 	k.on('error', this.sink_sub.bind(this));
-	this.subscription_callbacks.forEach(function (cb) {
-		cb(null);
-	});
+	for (let i = 0, subCs = this.subscription_callbacks, l = subCs.length;
+		  i < l; i++) {
+		subCs[i](null);
+	}
 	delete this.pending_subscriptions;
 	delete this.subscription_callbacks;
 };
@@ -125,7 +127,7 @@ S.on_message = function (chan, msg) {
 	var kind = parseInt(m[2], 10);
 
 	if (extra) {
-		var modified = inject_extra(op, kind, msg, extra);
+		var modified = inject_extra(kind, msg, extra);
 		// currently this won't modify op or kind,
 		// but will have to watch out for that if that changes
 		if (modified)
@@ -134,12 +136,23 @@ S.on_message = function (chan, msg) {
 	this.emit('update', op, kind, '[[' + msg + ']]');
 };
 
+function inject_extra(kind, msg, extra) {
+	// Just one kind of insertion right now
+	if (kind == common.INSERT_POST && extra.ip) {
+		var m = msg.match(/^(\d+,\d+,\d+,)(.+)$/);
+		var post = JSON.parse(m[2]);
+		post.ip = extra.ip;
+		return m[1] + JSON.stringify(post);
+	}
+}
+
 S.on_sub_error = function (err) {
 	winston.error("Subscription error:", (err.stack || err));
 	this.commit_sudoku();
-	this.subscription_callbacks.forEach(function (cb) {
-		cb(err);
-	});
+	for (let i = 0, subCs = this.subscription_callbacks, l = subCs.length;
+		  i < l; i++) {
+		subCs[i](err);
+	}
 	this.subscription_callbacks = null;
 };
 
@@ -173,16 +186,6 @@ S.has_no_listeners = function () {
 			self.commit_sudoku();
 	}, 30 * 1000);
 };
-
-function inject_extra(op, kind, msg, extra) {
-	// Just one kind of insertion right now
-	if (kind == common.INSERT_POST && extra.ip) {
-		var m = msg.match(/^(\d+,\d+,\d+,)(.+)$/);
-		var post = JSON.parse(m[2]);
-		post.ip = extra.ip;
-		return m[1] + JSON.stringify(post);
-	}
-}
 
 /* OP CACHE */
 
@@ -218,10 +221,10 @@ function OP_has_tag(tag, op) {
 		return index == tags;
 	else
 		return tags.indexOf(index) >= 0;
-};
+}
 exports.OP_has_tag = OP_has_tag;
 
-exports.first_tag_of = function (op) {
+function first_tag_of (op) {
 	var tags = TAGS[op];
 	if (tags === undefined)
 		return false;
@@ -229,7 +232,8 @@ exports.first_tag_of = function (op) {
 		return config.BOARDS[tags];
 	else
 		return config.BOARDS[tags[0]];
-};
+}
+exports.first_tag_of = first_tag_of;
 
 function tags_of(op) {
 	var tags = TAGS[op];
@@ -241,6 +245,18 @@ function tags_of(op) {
 		return tags.map(function (i) { return config.BOARDS[i]; });
 }
 exports.tags_of = tags_of;
+
+
+function track_OPs (callback) {
+	var k = redis_client();
+	k.subscribe('cache');
+	k.once('subscribe', function () {
+		load_OPs(callback);
+	});
+	k.on('message', update_cache);
+	/* k persists for the purpose of cache updates */
+}
+exports.track_OPs = track_OPs;
 
 function update_cache(chan, msg) {
 	msg = JSON.parse(msg);
@@ -260,35 +276,28 @@ function update_cache(chan, msg) {
 		set_OP_tag(tag, op);
 	}
 	else if (kind == common.DELETE_POSTS) {
-		msg.nums.forEach(function (num) {
-			delete OPs[num];
-		});
+		const nums = msg.nums;
+		for (let i = 0, l = msg.num.length; i < l; i++) {
+			delete OPs[nums[i]];
+		}
 	}
 	else if (kind == common.DELETE_THREAD) {
-		msg.nums.forEach(function (num) {
-			delete OPs[num];
-		});
+		const nums = msg.nums;
+		for (let i = 0, l = nums.length; i < l; i++) {
+			delete OPs[nums[i]];
+		}
 		delete TAGS[op];
 	}
 }
 
-exports.track_OPs = function (callback) {
-	var k = redis_client();
-	k.subscribe('cache');
-	k.once('subscribe', function () {
-		load_OPs(callback);
-	});
-	k.on('message', update_cache);
-	/* k persists for the purpose of cache updates */
-};
-
-exports.on_pub = function (name, handler) {
+function on_pub (name, handler) {
 	// TODO: share redis connection
 	var k = redis_client();
 	k.subscribe(name);
 	k.on('message', handler);
 	/* k persists */
-};
+}
+exports.on_pub = on_pub;
 
 function load_OPs(callback) {
 	var r = global.redis;
@@ -324,9 +333,9 @@ function load_OPs(callback) {
 		get_all_replies(r, op, function (err, posts) {
 			if (err)
 				return cb(err);
-			posts.forEach(function (num) {
-				OPs[parseInt(num, 10)] = op;
-			});
+			for (let i = 0, l = posts.length; i < l; i++) {
+				OPs[parseInt(posts[i], 10)] = op;
+			}
 			cb(null);
 		});
 	}
@@ -369,9 +378,11 @@ exports.expiry_queue_key = expiry_queue_key;
 
 /* SOCIETY */
 
-exports.is_board = function (board) {
+
+function is_board (board) {
 	return config.BOARDS.indexOf(board) >= 0;
-};
+}
+exports.is_board = is_board;
 
 exports.UPKEEP_IDENT = {auth: 'Upkeep', ip: '127.0.0.1'};
 
@@ -405,7 +416,7 @@ function forEachInObject(obj, f, callback) {
 		if (done && complete == total)
 			callback(errors.length ? errors : null);
 	}
-	for (var k in obj) {
+	for (let k in obj) {
 		if (obj.hasOwnProperty(k)) {
 			total++;
 			f(k, cb);
@@ -435,16 +446,16 @@ Y.kiku = function (targets, on_update, on_sink, callback) {
 };
 
 Y.kikanai = function () {
-	var self = this;
-	this.subs.forEach(function (key) {
-		var sub = SUBS[key];
-		if (sub) {
-			sub.removeListener('update', self.on_update);
-			sub.removeListener('error', self.on_sink);
-			if (sub.listeners('update').length == 0)
-				sub.has_no_listeners();
-		}
-	});
+	const subs = this.subs;
+	for (let i = 0, l = subs.length; i < l; i++) {
+		let sub = SUBS[subs[i]];
+		if (!sub)
+			continue;
+		sub.removeListener('update', this.on_update);
+		sub.removeListener('error', this.on_sink);
+		if (sub.listeners('update').length == 0)
+			sub.has_no_listeners();
+	}
 	this.subs = [];
 	return this;
 };
@@ -527,11 +538,18 @@ Y.insert_post = function (msg, body, extra, callback) {
 		}
 	}
 
-	var view = {time: msg.time, num: num, board: board, ip: ip, state: msg.state.join()};
-	optPostFields.forEach(function (field) {
+	var view = {
+		time: msg.time,
+		num: num,
+		board: board,
+		ip: ip,
+		state: msg.state.join()
+	};
+	for (let i = 0, l = optPostFields.length; i < l; i++) {
+		const field = optPostFields[i];
 		if (msg[field])
 			view[field] = msg[field];
-	});
+	}
 	var tagKey = 'tag:' + tag_key(this.tag);
 	if (op)
 		view.op = op;
@@ -700,9 +718,10 @@ Y.remove_posts = function (nums, callback) {
 		if (err)
 			return callback(err);
 		var threads = {}, already_gone = [];
-		dels.forEach(function (del) {
+		for (let i = 0, l = dels.length; i < l; i++) {
+			let del = dels[i];
 			if (Array.isArray(del)) {
-				var op = del[0];
+				let op = del[0];
 				if (!(op in threads))
 					threads[op] = [];
 				threads[op].push(del[1]);
@@ -711,18 +730,19 @@ Y.remove_posts = function (nums, callback) {
 				already_gone.push(-del);
 			else if (del)
 				winston.warn('Unknown del: ' + del);
-		});
+		}
 		if (already_gone.length)
 			winston.warn("Tried to delete missing posts: " +
 					already_gone);
 		if (_.isEmpty(threads))
 			return callback(null);
 		var m = self.connect().multi();
-		for (var op in threads) {
-			var nums = threads[op];
+		for (let op in threads) {
+			let nums = threads[op];
 			nums.sort();
-			var opts = {cacheUpdate: {nums: nums}};
-			self._log(m, op, common.DELETE_POSTS, nums, opts);
+			self._log(m, op, common.DELETE_POSTS, nums, {
+				cacheUpdate: {nums: nums}
+			});
 		}
 		m.exec(callback);
 	}
@@ -818,10 +838,9 @@ Y.purge_thread = function(op, callback){
 		function(res, next){
 			var m = r.multi();
 			m.hgetall(key);
-			if (res){
-				res.forEach(function(el){
-					m.hgetall('post:' + el);
-				});
+			if (res) {
+				for (let i = 0, l = res.length; i < l; i++)
+					m.hgetall('post:' + res[i]);
 			}
 			m.exec(next);
 		},
@@ -830,7 +849,7 @@ Y.purge_thread = function(op, callback){
 			var to_delete = [];
 			var imp = imager.media_path;
 			var m = r.multi();
-			for (i = 0; i < res.length; i++){
+			for (let i = 0, len = res.length; i < len; i++) {
 				if (res[i].src)
 					to_delete.push(imp('src', res[i].src));
 				if (res[i].thumb)
@@ -838,12 +857,12 @@ Y.purge_thread = function(op, callback){
 				if (res[i].mid)
 					to_delete.push(imp('mid', res[i].mid));
 			}
-			to_delete.forEach(function(el){
+			for (let i = 0, l = to_delete.length; i < l; i++) {
 				fs.unlink(el, function(err){
 					if (err)
 						winston.error(err);
 				});
-			});
+			}
 			m.lrange(key + ':posts', 0, -1);
 			m.zrem('tag:' + res[0].tags + ':threads', op);
 			m.exec(next);
@@ -851,11 +870,11 @@ Y.purge_thread = function(op, callback){
 		function(res, done){
 			// Delete post keys
 			var m = r.multi();
-			if (res[0]){
-				res[0].forEach(function(entry){
-					m.del('post:' + entry);
-					m.del('post:' + entry + ':links');
-				});
+			if (res[0]) {
+				for (let i = 0, lim = res[0].length; i < lim; i++) {
+					m.del('post:' + res[0][i]);
+					m.del('post:' + res[0][i] + ':links');
+				}
 			}
 			// Delete thread keys
 			m.del(key);
@@ -907,12 +926,12 @@ Y.archive_thread = function (op, callback) {
 		m.hset(key, 'origTags', tags);
 		m.hset(key, 'tags', tag_key('archive'));
 		tags = parse_tags(tags);
-		tags.forEach(function (tag) {
-			var tagKey = 'tag:' + tag_key(tag);
+		for (let i = 0, lim = tags.length; i < lim; i++) {
+			const tagKey = 'tag:' + tag_key(tags[i]);
 			m.zrem(tagKey + ':threads', op);
 			if (subject)
 				m.zrem(tagKey + ':subjects', subject);
-		});
+		}
 		m.zadd(archiveKey + ':threads', op, op);
 		self._log(m, op, common.DELETE_THREAD, [], {tags: tags});
 
@@ -933,10 +952,11 @@ Y.archive_thread = function (op, callback) {
 		m.del(key + ':history');
 
 		// delete hidden posts
-		dels.forEach(function (num) {
+		for (let i = 0, l = dels.length; i < l; i++) {
+			let num = dels[i];
 			m.del('post:' + num);
 			m.del('post:' + num + ':links');
-		});
+		}
 		m.del(key + ':dels');
 
 		m.exec(next);
@@ -959,9 +979,11 @@ Y.remove_images = function (nums, callback) {
 		if (err)
 			return callback(err);
 		var m = self.connect().multi();
-		for (var op in threads)
-			self._log(m, op, common.DELETE_IMAGES, threads[op],
-					{tags: tags_of(op)});
+		for (let op in threads) {
+			self._log(m, op, common.DELETE_IMAGES, threads[op], {
+				tags: tags_of(op)
+			});
+		}
 		m.exec(callback);
 	});
 };
@@ -1014,7 +1036,7 @@ Y.hide_image = function (key, callback) {
 		if (!rs)
 			return callback(null);
 		var info = {};
-		for (var i = 0; i < rs.length; i++)
+		for (let i = 0; i < rs.length; i++)
 			info[imgKeys[i]] = rs[i];
 		if (info.hideimg) /* already gone */
 			return callback(null);
@@ -1032,9 +1054,11 @@ Y.force_image_spoilers = function (nums, callback) {
 		if (err)
 			return callback(err);
 		var m = self.connect().multi();
-		for (var op in threads)
-			self._log(m, op, common.SPOILER_IMAGES, threads[op],
-					{tags: tags_of(op)});
+		for (let op in threads) {
+			self._log(m, op, common.SPOILER_IMAGES, threads[op], {
+				tags: tags_of(op)
+			});
+		}
 		m.exec(callback);
 	});
 };
@@ -1047,7 +1071,6 @@ Y.spoiler_image = function (threads, num, callback) {
 	if (!op)
 		callback(null, false);
 	var key = (op == num ? 'thread:' : 'post:') + num;
-	var self = this;
 	var spoilerKeys = ['src', 'spoiler'];
 	r.hmget(key, spoilerKeys, function (err, info) {
 		if (err)
@@ -1156,7 +1179,6 @@ Y.add_image = function (post, alloc, ip, callback) {
 		self._log(m, op, common.INSERT_IMAGE, [num, image]);
 
 		var now = Date.now();
-		var n = post_volume({image: true});
 		update_throughput(m, ip, now, post_volume({image: true}));
 		m.exec(callback);
 	}
@@ -1183,7 +1205,7 @@ Y.append_post = function (post, tail, old_state, extra, cb) {
 	hooks.trigger("attachToPost", attached, function (err, attached) {
 		if (err)
 			return cb(err);
-		for (var h in attached.writeKeys)
+		for (let h in attached.writeKeys)
 			m.hset(key, h, attached.writeKeys[h]);
 		var msg = [post.num, tail];
 		var links = extra.links || {};
@@ -1289,10 +1311,9 @@ Y._log = function (m, op, kind, msg, opts) {
 		msg += JSON.stringify(opts.augments);
 	m.publish(key, msg);
 	var tags = opts.tags || (this.tag ? [this.tag] : []);
-	tags.forEach(function (tag) {
-		m.publish('tag:' + tag, msg);
-	});
-
+	for (let i = 0, l = tags.length; i < l; i++) {
+		m.publish('tag:' + tags[i], msg);
+	}
 	if (opts.cacheUpdate) {
 		var info = {kind: kind, tag: tags[0], op: op};
 		_.extend(info, opts.cacheUpdate);
@@ -1313,9 +1334,9 @@ Y.fetch_backlogs = function (watching, callback) {
 				return cb(err);
 
 			var prefix = thread + ',';
-			log.forEach(function (entry) {
-				combined.push(prefix + entry);
-			});
+			for (let i = 0, l = log.length; i < l; i++) {
+				combined.push(prefix + log[i]);
+			}
 
 			cb(null);
 		});
@@ -1407,10 +1428,10 @@ exports.Reader = Reader;
 
 Reader.prototype.get_thread = function (tag, num, opts) {
 	var r = this.y.connect();
-	var graveyard = (tag == 'graveyard');
+	const graveyard = tag == 'graveyard';
 	if (graveyard)
 		opts.showDead = true;
-	var key = (graveyard ? 'dead:' : 'thread:') + num;
+	const key = (graveyard ? 'dead:' : 'thread:') + num;
 	var self = this;
 	r.hgetall(key, function (err, pre_post) {
 		if (err)
@@ -1432,7 +1453,7 @@ Reader.prototype.get_thread = function (tag, num, opts) {
 		var exists = true;
 		if (pre_post.hide && !opts.showDead)
 			exists = false;
-		var tags = parse_tags(pre_post.tags);
+		const tags = parse_tags(pre_post.tags);
 		if (!graveyard && tags.indexOf(tag) < 0) {
 			/* XXX: Should redirect directly to correct thread */
 			if (opts.redirect)
@@ -1445,55 +1466,65 @@ Reader.prototype.get_thread = function (tag, num, opts) {
 			return;
 		}
 		self.emit('begin', pre_post);
+		/*
+		 A bit useless now, but might as well keep it for some backwards
+		 comatibility with older database entries.
+		 */
 		pre_post.num = num;
 		pre_post.time = parseInt(pre_post.time, 10);
 
 		var nums, deadNums, opPost;
 		var abbrev = opts.abbrev || 0, total = 0;
-		async.waterfall([
-		function (next) {
-			with_body(r, key, pre_post, next);
-		},
-		function (fullPost, next) {
-			opPost = fullPost;
-			var m = r.multi();
-			var postsKey = key + ':posts';
+		async.waterfall(
+			[
+				function (next) {
+					with_body(r, key, pre_post, next);
+				},
+				function (fullPost, next) {
+					opPost = fullPost;
+					var m = r.multi();
+					const postsKey = key + ':posts';
 
-			// order is important!
-			m.lrange(postsKey, -abbrev, -1);
-			if (abbrev)
-				m.llen(postsKey);
-			if (opts.showDead) {
-				var deadKey = key + ':dels';
-				m.lrange(deadKey, -abbrev, -1);
-				if (abbrev)
-					m.llen(deadKey);
-			}
-			m.exec(next);
-		},
-		function (rs, next) {
-			// get results in the same order as before
-			nums = rs.shift();
-			if (abbrev)
-				total += parseInt(rs.shift(), 10);
-			if (opts.showDead) {
-				deadNums = rs.shift();
-				if (abbrev)
-					total += parseInt(rs.shift(), 10);
-			}
+					// order is important!
+					m.lrange(postsKey, -abbrev, -1);
+					m.hgetall(key + ':links');
+					if (abbrev)
+						m.llen(postsKey);
+					if (opts.showDead) {
+						var deadKey = key + ':dels';
+						m.lrange(deadKey, -abbrev, -1);
+						if (abbrev)
+							m.llen(deadKey);
+					}
+					m.exec(next);
+				},
+				function (rs, next) {
+					// get results in the same order as before
+					nums = rs.shift();
+					const links = rs.shift();
+					if (links)
+						opPost.links = links;
+					if (abbrev)
+						total += parseInt(rs.shift(), 10);
+					if (opts.showDead) {
+						deadNums = rs.shift();
+						if (abbrev)
+							total += parseInt(rs.shift(), 10);
+					}
 
-			extract(opPost);
-			next(null);
-		}],
-		function (err) {
-			if (err)
-				return self.emit('error', err);
-			if (deadNums)
-				nums = merge_posts(nums, deadNums, abbrev);
-			var omit = Math.max(total - abbrev, 0);
-			self.emit('thread', opPost, omit);
-			self._get_each_reply(tag, 0, nums, opts);
-		});
+					extract(opPost);
+					next(null);
+				}
+			],
+			function (err) {
+				if (err)
+					return self.emit('error', err);
+				if (deadNums)
+					nums = merge_posts(nums, deadNums, abbrev);
+				self.emit('thread', opPost, Math.max(total - abbrev, 0));
+				self._get_each_reply(tag, 0, nums, opts);
+			}
+		);
 	});
 };
 
@@ -1543,35 +1574,44 @@ Reader.prototype._get_each_reply = function (tag, ix, nums, opts) {
 
 Reader.prototype.get_post = function (kind, num, opts, cb) {
 	var r = this.y.connect();
-	var key = kind + ':' + num;
-	var self = this;
+	const key = kind + ':' + num;
 	async.waterfall([
-	function (next) {
-		r.hgetall(key, next);
-	},
-	function (pre_post, next) {
-		var exists = !(_.isEmpty(pre_post));
-		if (exists && pre_post.hide && !opts.showDead)
-			exists = false;
-		if (!exists)
-			return next(null, null);
+		function (next) {
+			var m = r.multi();
+			m.hgetall(key);
+			m.hgetall(key + ':links');
+			m.exec(next);
+		},
+		function (data, next) {
+			var pre_post = data[0];
+			const links = data[1];
+			if (links)
+				pre_post.links = links;
+			var exists = !(_.isEmpty(pre_post));
+			if (exists && pre_post.hide && !opts.showDead)
+				exists = false;
+			if (!exists)
+				return next(null, null);
 
-		pre_post.num = num;
-		pre_post.time = parseInt(pre_post.time, 10);
-		if (kind == 'post') {
-			pre_post.op = parseInt(pre_post.op, 10);
+			pre_post.num = num;
+			pre_post.time = parseInt(pre_post.time, 10);
+			if (kind == 'post')
+				pre_post.op = parseInt(pre_post.op, 10);
+			else {
+				/*
+				 TODO: filter by ident eligibility and attach
+				 Currently used only for reporting
+				 */
+				//var tags = parse_tags(pre_post.tags);
+			}
+			with_body(r, key, pre_post, next);
+		},
+		function (post, next) {
+			if (post)
+				extract(post);
+			next(null, post);
 		}
-		else {
-			var tags = parse_tags(pre_post.tags);
-			// TODO: filter by ident eligibility and attach
-		}
-		with_body(r, key, pre_post, next);
-	},
-	function (post, next) {
-		if (post)
-			extract(post);
-		next(null, post);
-	}], cb);
+	],	cb);
 };
 
 function get_all_replies(r, op, cb) {
@@ -1581,14 +1621,14 @@ function get_all_replies(r, op, cb) {
 			return cb(err);
 		return cb(null, nums);
 	});
-};
+}
 
 /* AUTHORITY */
 
 function Filter(tag) {
 	events.EventEmitter.call(this);
 	this.tag = tag;
-};
+}
 
 util.inherits(Filter, events.EventEmitter);
 exports.Filter = Filter;
@@ -1755,15 +1795,17 @@ function with_body(r, key, post, callback) {
 				callback(null, post);
 			});
 		});
-};
+}
 
 function subject_val(op, subject) {
 	return subject && (op + ':' + subject);
 }
 
-var tag_key = exports.tag_key =  function(tag) {
+
+function tag_key(tag) {
 	return tag.length + ':' + tag;
-};
+}
+exports.tag_key = tag_key;
 
 function parse_tags(input) {
 	if (!input) {
@@ -1791,15 +1833,8 @@ function hmget_obj(r, key, keys, cb) {
 		if (err)
 			return cb(err);
 		var result = {};
-		for (var i = 0; i < keys.length; i++)
+		for (let i = 0; i < keys.length; i++)
 			result[keys[i]] = rs[i];
 		cb(null, result);
 	});
 }
-
-// Remove expired duplicate image hashes
-function cleanUpDups(){
-	global.redis.zremrangebyscore('imageDups', 0, Date.now());
-}
-
-setInterval(cleanUpDups, 60000);

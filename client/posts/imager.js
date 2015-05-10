@@ -9,11 +9,6 @@ var $ = require('jquery'),
 	options = require('../options');
 
 var Hidamari = exports.Hidamari = {
-	events: {
-		'click >figure>figcaption>.imageSrc': 'revealThumbnail',
-		'click >figure>a': 'imageClicked'
-	},
-
 	renderImage: function (model, image) {
 		var $fig = this.$el.children('figure');
 		// Remove image on mod deletion
@@ -99,6 +94,8 @@ var Hidamari = exports.Hidamari = {
 	imageClicked: function(e){
 		if (options.get('inlinefit') == 'none' || e.which != 1)
 			return;
+		// Remove image hover preview, if any
+		options.trigger('imageClicked');
 		e.preventDefault();
 		this.toggleImageExpansion();
 	},
@@ -208,13 +205,22 @@ var Hidamari = exports.Hidamari = {
 	}
 };
 
-var massExpander = exports.massExpander = new Backbone.Model({
-	expand: false
+// Expand all images
+var ExpanderModel = Backbone.Model.extend({
+	id: 'massExpander',
+
+	toggle: function() {
+		const expand = !this.get('expand');
+		this.set('expand', expand);
+		main.$threads
+			.find('#expandImages')
+			.text(`${expand ? 'Contract' : 'Expand'} Images`);
+	}
 });
 
-$('#expandImages').click(function(e){
+var massExpander = exports.massExpander = new ExpanderModel();
+
+main.$threads.on('click', '#expandImages', function(e){
 	e.preventDefault();
-	const expand = massExpander.get('expand');
-	$(e.target).text((expand ? 'Expand' : 'Contract')+' Images');
-	massExpander.set('expand', !expand);
+	massExpander.toggle();
 });

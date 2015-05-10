@@ -7,7 +7,7 @@ var $ = require('jquery'),
 	memory = require('./memory');
 
 // Read page state by parsing a URL
-var read = exports.read = function(url) {
+function read(url) {
 	const href = url.split('#')[0],
 		// Display last N posts setting on thread pages
 		lastN = href.match(/[\?&]last=(\d+)/);
@@ -27,33 +27,27 @@ var read = exports.read = function(url) {
 		 */
 		live: page === -1 && thread === 0
 	};
-};
+}
+exports.read = read;
 
 // Initial page state
-var page = exports.page = new Backbone.Model(read(location.href));
+var init = read(location.href);
+init.id = 'page';
+var page = exports.page = new Backbone.Model(init);
 
 // Hot-reloadable configuration
 // TODO: We need actual listeners to this model for hot reloads.
+window.hotConfig.id = 'hotConfig';
 exports.hotConfig = new Backbone.Model(window.hotConfig);
 // Hash of all the config variables
 exports.configHash = window.configHash;
 
-var PostCollection = Backbone.Collection.extend({
-	idAttribute: 'num'
-});
 // All posts currently displayed
-var posts = exports.posts = new PostCollection();
-/*
-* All threads currently displayed. Threads are also posts.
-* This seperation is needed, not to search through all posts, to find a thread.
-*/
-var threads = exports.threads = new Set();
-
-exports.getThread = function(num) {
-	if (!threads.has(num))
-		return null;
-	return posts.get(num);
-};
+var posts = exports.posts = new Backbone.Collection();
+// Contains inter-post linking relations
+exports.linkerCore = new Backbone.Model({
+	id: 'linkerCore'
+});
 
 // Tracks the synchronisation counter of each thread
 exports.syncs = {};

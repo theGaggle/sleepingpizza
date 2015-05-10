@@ -1,16 +1,19 @@
+'use strict';
+
 var async = require('async');
+var HOOKS = {},
+	SYNC_HOOKS = {};
 
-var HOOKS = {}, SYNC_HOOKS = {};
-
-exports.hook = function (key, func) {
+function hook (key, func) {
 	var hs = HOOKS[key];
 	if (hs)
 		hs.push(func);
 	else
 		HOOKS[key] = [func];
-};
+}
+exports.hook = hook;
 
-exports.trigger = function (key, arg, cb) {
+function trigger (key, arg, cb) {
 	var hs = HOOKS[key] || [];
 	async.forEachSeries(hs, function (hook, next) {
 		hook(arg, next);
@@ -20,19 +23,22 @@ exports.trigger = function (key, arg, cb) {
 		else
 			cb(null, arg);
 	});
-};
+}
+exports.trigger = trigger;
 
-exports.hook_sync = function (key, func) {
+function hook_sync (key, func) {
 	var hs = SYNC_HOOKS[key];
 	if (hs)
 		hs.push(func);
 	else
 		SYNC_HOOKS[key] = [func];
-};
+}
+exports.hook_sync = hook_sync;
 
-exports.trigger_sync = function (key, arg) {
-	var hs = SYNC_HOOKS[key] || [];
-	hs.forEach(function (func) {
-		func(arg);
-	});
-};
+function trigger_sync (key, arg) {
+	let hs = SYNC_HOOKS[key] || [];
+	for (let i = 0, l = hs.length; i < l; i++) {
+		hs[i](arg);
+	}
+}
+exports.trigger_sync = trigger_sync;

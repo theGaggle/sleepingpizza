@@ -1,9 +1,11 @@
 var $ = require('jquery'),
 	Backbone = require('backbone'),
 	common = require('../common/index'),
-	main = require('./main');
+	main = require('./main'),
+	options = require('./options');
 
-const date_from_time_el = exports.date_from_time_el = function(el) {
+
+function date_from_time_el(el) {
 	if (!el)
 		return new Date();
 	const dTime = el.getAttribute('datetime');
@@ -13,13 +15,8 @@ const date_from_time_el = exports.date_from_time_el = function(el) {
 	return new Date(
 		dTime.replace(/-/g, '/').replace('T', ' ').replace('Z', ' GMT')
 	);
-};
-
-function adjust_all_times() {
-	main.$threads.find('time').each(function () {
-		this.innerHTML = main.oneeSama.readable_time(date_from_time_el(this).getTime());
-	});
 }
+exports.date_from_time_el = date_from_time_el;
 
 const is_skewed = (function(){
 	var el = document.querySelector('time');
@@ -30,8 +27,9 @@ const is_skewed = (function(){
 })();
 
 if (is_skewed) {
+	// Rerender all post times
 	if (!main.oneeSama.rTime)
-		adjust_all_times();
+		options.trigger('change:relativeTime', null, false);
 
 	setTimeout(function () {
 		// next request, have the server render the right times
@@ -56,14 +54,14 @@ main.dispatcher[common.GET_TIME] = function(msg){
 	var seconds;
 	var $el = $('<span/>', {
 		title: 'Click to show seconds',
-		id: 'UTCClock'
+		id: 'UTCClock',
+		html: '<b></b><hr>'
 	})
-		.html('<b></b><hr>')
 		.prependTo('#schedule')
 		// Append seconds and render clock every second, if clicked
 		.one('click', function() {
 			seconds = true;
-			$(this).removeAttr('title');
+			this.removeAttribute('title');
 			render();
 		});
 	$el = $el.find('b');

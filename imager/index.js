@@ -1,3 +1,5 @@
+'use strict';
+
 var async = require('async'),
     config = require('../config'),
     child_process = require('child_process'),
@@ -15,7 +17,7 @@ var image_attrs = ('src thumb ext dims size MD5 SHA1 hash imgnm spoiler vint'
 		+ ' apng mid audio length').split(' ');
 exports.image_attrs = image_attrs;
 
-exports.send_dead_image = function (kind, filename, resp) {
+function send_dead_image (kind, filename, resp) {
 	filename = dead_path(kind, filename);
 	var stream = fs.createReadStream(filename);
 	stream.once('error', function (err) {
@@ -31,7 +33,7 @@ exports.send_dead_image = function (kind, filename, resp) {
 	stream.once('open', function () {
 		var h = {
 			'Cache-Control': 'no-cache, no-store',
-			'Expires': 'Thu, 01 Jan 1970 00:00:00 GMT',
+			'Expires': 'Thu, 01 Jan 1970 00:00:00 GMT'
 		};
 		try {
 			h['Content-Type'] = require('mime').lookup(filename);
@@ -39,18 +41,20 @@ exports.send_dead_image = function (kind, filename, resp) {
 		resp.writeHead(200, h);
 		stream.pipe(resp);
 	});
-};
+}
+exports.send_dead_image = send_dead_image;
 
 hooks.hook_sync('extractPost', function (post) {
 	if (!is_image(post))
 		return;
-	var image = {};
-	image_attrs.forEach(function (key) {
+	let image = {};
+	for (let i = 0, l = image_attrs.length; i < l; i++) {
+		let key = image_attrs[i];
 		if (key in post) {
 			image[key] = post[key];
 			delete post[key];
 		}
-	});
+	}
 	if (image.dims.split)
 		image.dims = image.dims.split(',').map(parse_number);
 	image.size = parse_number(image.size);
@@ -63,25 +67,24 @@ function parse_number(n) {
 }
 
 hooks.hook_sync('inlinePost', function (info) {
-	var post = info.dest, image = info.src.image;
+	let post = info.dest;
+	const image = info.src.image;
 	if (!image)
 		return;
-	image_attrs.forEach(function (key) {
+	for (let i = 0, l = image_attrs.length; i < l; i++) {
+		let key = image_attrs[i];
 		if (key in image)
 			post[key] = image[key];
-	});
+	}
 });
 
 function publish(alloc, cb) {
-	var mvs = [];
-	for (var kind in alloc.tmps) {
-		var src = media_path('tmp', alloc.tmps[kind]);
-
-		var destDir = kind;
-		var destKey = kind;
-		var dest = media_path(destDir, alloc.image[destKey]);
-
-		mvs.push(etc.cpx.bind(etc, src, dest));
+	let mvs = [];
+	for (let kind in alloc.tmps) {
+		mvs.push(etc.cpx.bind(etc,
+			media_path('tmp', alloc.tmps[kind]),
+			media_path(kind, alloc.image[kind])
+		));
 	}
 	async.parallel(mvs, cb);
 }
@@ -89,12 +92,11 @@ function publish(alloc, cb) {
 function validate_alloc(alloc) {
 	if (!alloc || !alloc.image || !alloc.tmps)
 		return;
-	for (var dir in alloc.tmps) {
-		var fnm = alloc.tmps[dir];
+	for (let dir in alloc.tmps) {
+		const fnm = alloc.tmps[dir];
 		if (!/^[\w_]+$/.test(fnm)) {
-			winston.warn("Suspicious filename: "
-					+ JSON.stringify(fnm));
-			return;
+			winston.warn("Suspicious filename: " + JSON.stringify(fnm));
+			return false;
 		}
 	}
 	return true;
@@ -143,7 +145,7 @@ function make_dir(base, key, cb) {
 }
 exports._make_media_dir = make_dir;
 
-exports.make_media_dirs = function (cb) {
+function make_media_dirs (cb) {
 	var keys = ['src', 'thumb', 'vint', 'dead'];
 	if (!is_standalone())
 		keys.push('tmp');
@@ -158,9 +160,10 @@ exports.make_media_dirs = function (cb) {
 			keys.push('mid');
 		async.forEach(keys, make_dir.bind(null, dead), cb);
 	});
-};
+}
+exports.make_media_dirs = make_media_dirs;
 
-exports.serve_image = function (req, resp) {
+function serve_image (req, resp) {
 	var m = /^\/(src|thumb|mid|vint)(\/\d+\.\w+)$/.exec(req.url);
 	if (!m)
 		return false;
@@ -169,15 +172,17 @@ exports.serve_image = function (req, resp) {
 		return false;
 	require('send')(req, m[2], {root: root}).pipe(resp);
 	return true;
-};
+}
+exports.serve_image = serve_image;
 
-exports.squish_MD5 = function (hash) {
+function squish_MD5 (hash) {
 	if (typeof hash == 'string')
 		hash = new Buffer(hash, 'hex');
 	return hash.toString('base64').replace(/\//g, '_').replace(/=*$/, '');
-};
+}
+exports.squish_MD5 = squish_MD5;
 
-exports.obtain_image_alloc = function (id, cb) {
+function obtain_image_alloc (id, cb) {
 	var onegai = new db.Onegai;
 	onegai.obtain_image_alloc(id, function (err, alloc) {
 		onegai.disconnect();
@@ -189,9 +194,10 @@ exports.obtain_image_alloc = function (id, cb) {
 		else
 			cb("Invalid image alloc");
 	});
-};
+}
+exports.obtain_image_alloc = obtain_image_alloc;
 
-exports.commit_image_alloc = function (alloc, cb) {
+function commit_image_alloc (alloc, cb) {
 	publish(alloc, function (err) {
 		if (err)
 			return cb(err);
@@ -202,6 +208,7 @@ exports.commit_image_alloc = function (alloc, cb) {
 			cb(err);
 		});
 	});
-};
+}
+exports.commit_image_alloc = commit_image_alloc;
 
 var is_standalone = exports.is_standalone = db.is_standalone;

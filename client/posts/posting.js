@@ -1,6 +1,7 @@
 /*
  * Evertything related to writing and commiting posts
  */
+'use strict';
 
 var $ = require('jquery'),
 	_ = require('underscore'),
@@ -10,6 +11,7 @@ var $ = require('jquery'),
 	embed = require('./embed'),
 	ident = require('./identity'),
 	imager = require('./imager'),
+	inject = require('./common').inject,
 	main = require('../main'),
 	nonce = require('./nonce'),
 	options = require('../options'),
@@ -67,6 +69,10 @@ postSM.act('ready + new -> draft', function($aside) {
 	else
 		$sec = $('<section/>');
 
+	// Shift OP's replies on board pages
+	if (op)
+		state.posts.get(op).trigger('shiftReplies', true);
+
 	main.postModel = new ComposerModel({op: op});
 	main.postForm = postForm = new ComposerView({
 		model: main.postModel,
@@ -122,11 +128,9 @@ function handle_shortcut(event) {
 			}
 			break;
 		case opts.done:
-			if (postForm) {
-				if (!postForm.submit.attr('disabled')) {
+			if (postForm && !postForm.$submit.attr('disabled')) {
 					postForm.finish();
 					used = true;
-				}
 			}
 			break;
 		// Insert text spoiler
@@ -141,7 +145,7 @@ function handle_shortcut(event) {
 			}
 			break;
 		case opts.expandAll:
-			imager.massExpander.set('expand', !massExpander.get('expand'));
+			imager.massExpander.toggle();
 			used = true;
 			break;
 	}
@@ -154,8 +158,31 @@ function handle_shortcut(event) {
 
 // Gets the top <hr> of <threads>
 function $ceiling() {
-	return main.$threads.children('hr:first');
+	return main.$threads.children('hr').first();
 }
+
+// TODO: Unify self-updates with OneeSama; this is redundant
+main.oneeSama.hook('insertOwnPost', function (info) {
+	if (!main.postForm || !info.links)
+		return;
+	postForm.$buffer.find('.nope').each(function() {
+		var $a = $(this);
+		const text = $a.text(),
+			m = text.match(/^>>(\d+)/);
+		if (!m)
+			return;
+		const num = m[1],
+			op = info.links[num];
+		if (!op)
+			return;
+		var $ref = $(flatten([main.postForm.imouto.post_ref(num, op, false)])
+			.join(''));
+		$a.attr('href', $ref.attr('href')).removeAttr('class');
+		const refText = $ref.text();
+		if (refText != text)
+			$a.text(refText);
+	});
+});
 
 var ComposerView = Backbone.View.extend({
 	events: {
@@ -184,18 +211,16 @@ var ComposerView = Backbone.View.extend({
 				$sec = $sec.closest('section');
 			if ($sec.is('section'))
 				this.callback(this.post_ref(num, extractNum($sec)));
-			else {
-				this.callback(common.safe('<a class="nope">&gt;&gt;'
-					+ num + '</a>'));
-			}
+			else
+				this.callback(common.safe(`<a class="nope">&gt;&gt;${num}</a>`));
 		});
 		// Initialise the renderer instance
-		this.imouto.callback = client.inject;
+		this.imouto.callback = inject;
 		this.imouto.op = state.page.get('thread');
 		this.imouto.state = [common.S_BOL, 0];
 		// TODO: Convert current OneeSama.state array to more flexible object
 		this.imouto.state2 = {spoiler: 0};
-		this.imouto.buffer = this.$buffer;
+		this.imouto.$buffer = this.$buffer;
 		this.imouto.eLinkify = main.oneeSama.eLinkify;
 		this.imouto.hook('spoilerTag', client.touchable_spoiler_tag);
 		main.oneeSama.trigger('imouto', this.imouto);
@@ -203,9 +228,10 @@ var ComposerView = Backbone.View.extend({
 
 	// Initial render
 	render: function(args) {
-		this.setElement((this.model.get('op') ? $('<article/>') : args.$sec)[0]);
+		const op = this.model.get('op');
+		this.setElement((op ? $('<article/>') : args.$sec)[0]);
 		// A defined op means the post is a reply, not a new thread
-		const op = !!this.model.get('op');
+		this.isThread = !op;
 
 		this.$buffer = $('<p/>');
 		this.$lineBuffer = $('<p/>');
@@ -240,7 +266,7 @@ var ComposerView = Backbone.View.extend({
 
 		this.$blockquote.append(this.$buffer, this.$lineBuffer, this.$input);
 		this.$el.append(this.$meta, this.$blockquote);
-		if (!op) {
+		if (this.isThread) {
 			this.$el.append('<label for="subject">Subject: </label>',
 				this.$subject);
 			this.$blockquote.hide();
@@ -251,21 +277,19 @@ var ComposerView = Backbone.View.extend({
 		main.oneeSama.trigger('draft', this.$el);
 		this.renderIdentity();
 		args.$dest.hide();
-		if (op)
-			this.$el.insertBefore(args.$dest);
-		else
-			this.$el.insertAfter(args.$dest);
 
-		if (op) {
+		if (this.isThread) {
+			this.$el.insertAfter(args.$dest);
+			this.$el.after('<hr>');
+			this.$subject.focus();
+		}
+		else {
+			this.$el.insertBefore(args.$dest);
 			this.resizeInput();
 			this.$input.focus();
 		}
-		else {
-			this.$el.after('<hr class="sectionHr"/>');
-			this.$subject.focus();
-		}
-		main.$threads.find('aside').hide();
 
+		main.$threads.find('aside').hide();
 		preloadPanes();
 	},
 
@@ -288,7 +312,7 @@ var ComposerView = Backbone.View.extend({
 		var email = main.$email.val().trim();
 		if (common.is_noko(email))
 			email = '';
-		var $tag = this.$meta.children('a:first');
+		var $tag = this.$meta.children('a').first();
 		if (email) {
 			$tag.attr({
 				href: 'mailto:' + email,
@@ -555,9 +579,8 @@ var ComposerView = Backbone.View.extend({
 		if (!params || params.indexOf('t=') < 0)
 			return false;
 		params = params.split('&');
-		var pair;
-		for (var i = 0; i < params.length; i++) {
-			pair = '#' + params[i];
+		for (let i = 0, len = params.length; i < len; i++) {
+			let pair = '#' + params[i];
 			if (embed.youtube_time_re.test(pair))
 				return pair;
 		}
@@ -570,7 +593,7 @@ var ComposerView = Backbone.View.extend({
 		if (text.indexOf('\n') >= 0) {
 			lines = text.split('\n');
 			this.line_count += lines.length - 1;
-			var breach = this.line_count - common.MAX_POST_LINES + 1;
+			const breach = this.line_count - common.MAX_POST_LINES + 1;
 			if (breach > 0) {
 				for (var i = 0; i < breach; i++)
 					lines.pop();
@@ -586,7 +609,7 @@ var ComposerView = Backbone.View.extend({
 		this.char_count += text.length;
 
 		// Either get an allocation or send the committed text
-		var attrs = this.model.attributes;
+		const attrs = this.model.attributes;
 		if (!attrs.num && !attrs.sentAllocRequest) {
 			main.send([common.INSERT_POST, this.allocationMessage(text, null)]);
 			this.model.set({sentAllocRequest: true});
@@ -600,7 +623,7 @@ var ComposerView = Backbone.View.extend({
 		if (lines) {
 			lines[0] = this.$lineBuffer.text() + lines[0];
 			this.$lineBuffer.text(lines.pop());
-			for (var o = 0; o < lines.length; o++)
+			for (let o = 0, len = lines.length; o < len; o++)
 				this.imouto.fragment(lines[o] + '\n');
 		}
 		else {
@@ -611,7 +634,7 @@ var ComposerView = Backbone.View.extend({
 
 	// Construct the message for post allocation in the database
 	allocationMessage: function(text, image) {
-		var msg = {nonce: nonce.create_nonce()};
+		var msg = {nonce: nonce.create()};
 
 		function opt(key, val) {
 			if (val)
@@ -665,9 +688,14 @@ var ComposerView = Backbone.View.extend({
 			this.imouto.fragment(this.$lineBuffer.text());
 			this.$buffer.replaceWith(this.$buffer.contents());
 			this.$lineBuffer.remove();
-			this.$blockquote.css({'margin-left': '', 'padding-left': ''});
+			this.$blockquote.css({
+				'margin-left': '',
+				'padding-left': ''
+			});
 			main.send([common.FINISH_POST]);
 			this.preserve = true;
+			if (this.isThread)
+				this.$el.append(main.oneeSama.replyBox());
 		}
 		postSM.feed('done');
 	},
@@ -690,8 +718,11 @@ var ComposerView = Backbone.View.extend({
 			this.model.set({spoiler: 0});
 			return;
 		}
-		const pick = pick_spoiler(attrs.nextSpoiler);
-		this.model.set({spoiler: pick.index, nextSpoiler: pick.next});
+		const pick = common.pick_spoiler(attrs.nextSpoiler);
+		this.model.set({
+			spoiler: pick.index,
+			nextSpoiler: pick.next
+		});
 	},
 
 	onAllocation: function(msg) {
@@ -702,8 +733,7 @@ var ComposerView = Backbone.View.extend({
 		var header = $(common.flatten(main.oneeSama.atama(msg)).join(''));
 		this.$meta.replaceWith(header);
 		this.$meta = header;
-		const op = this.model.get('op');
-		if (op)
+		if (!this.isThread)
 			this.$el.addClass('editing');
 
 		/*
@@ -720,7 +750,7 @@ var ComposerView = Backbone.View.extend({
 			this.$uploadForm.append(this.$submit);
 		else
 			this.$blockquote.after(this.$submit);
-		if (!op) {
+		if (this.isThread) {
 			this.$subject.siblings('label').andSelf().remove();
 			this.$blockquote.show();
 			this.resizeInput();
@@ -817,9 +847,8 @@ var ComposerView = Backbone.View.extend({
 		if (sel) {
 			sel = sel.split('\n');
 			// Prepend > to each line
-			for (var i = 0; i < sel.length; i++) {
+			for (let i = 0, len = sel.length; i < len; i++)
 				sel[i] = '>' + sel[i];
-			}
 			num += '\n' + sel.join('\n') + '\n';
 		}
 		this.$input.val(val + '>>' + num);
@@ -830,8 +859,8 @@ var ComposerView = Backbone.View.extend({
 
 	remove: function() {
 		if (!this.preserve) {
-			if (!this.model.get('op'))
-				this.$el.next('hr.sectionHr').remove();
+			if (this.isThread)
+				this.$el.next('hr').remove();
 			this.$el.remove();
 		}
 		this.$sizer.remove();
@@ -863,6 +892,12 @@ function imageUploadURL() {
 	return (main.config.UPLOAD_URL || '../upload/')
 		+ '?id=' + state.page.get('connID');
 }
+
+main.openPostBox = function(num) {
+	var $a = main.$threads.find('#' + num);
+	postSM.feed('new',
+		$a.is('section') ? $a.children('aside') : $a.siblings('aside'));
+};
 
 window.addEventListener('message', function(event) {
 	const msg = event.data;

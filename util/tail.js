@@ -1,5 +1,6 @@
 // avoids stack overflow for long lists
-exports.forEach = function (array, func, callback) {
+// TEMP: Remove when tail call optimisation hits io.js
+function forEach (array, func, callback) {
 	step(0);
 	function step(i) {
 		if (i >= array.length)
@@ -10,9 +11,10 @@ exports.forEach = function (array, func, callback) {
 			setImmediate(step, i + 1);
 		});
 	}
-};
+}
+exports.forEach = forEach;
 
-exports.map = function (array, func, callback) {
+function map (array, func, callback) {
 	var results = [];
 	step(0);
 	function step(i) {
@@ -25,4 +27,5 @@ exports.map = function (array, func, callback) {
 			setImmediate(step, i + 1);
 		});
 	}
-};
+}
+exports.map = map;

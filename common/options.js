@@ -155,16 +155,16 @@ var opts = [
 	/* R/A/DIO NOW PLAYING BANNER */
 	{
 		id: 'nowPlaying',
-		load: notMobile && index.RADIO,
+		load: notMobile && imports.config.RADIO,
 		type: 'checkbox',
 		tab: 3,
 		default: true,
 		exec: function(toggle) {
 			if (toggle)
-				banner.view.clearRadio();
-			// Query the server for current stream info
-			else
+				// Query the server for current stream info
 				imports.main.send([index.RADIO]);
+			else
+				banner.view.clearRadio();
 		}
 	}
 ];
@@ -330,27 +330,18 @@ opts.push(illyaDance,
 );
 
 /* SHORTCUT KEYS */
-[
-	{
-		id: 'new',
-		default: 78
-	}, {
-	id: 'togglespoiler',
-	default: 73
-}, {
-	id: 'textSpoiler',
-	default: 68
-}, {
-	id: 'done',
-	default: 83
-}, {
-	id: 'expandAll',
-	default: 69
+const shorts = [
+	{id: 'new',					default: 78},
+	{id: 'togglespoiler',	default: 73},
+	{id: 'textSpoiler',		default: 68},
+	{id: 'done',				default: 83},
+	{id: 'expandAll',			default: 69}
+];
+for (let i = 0, lim = shorts.length; i < lim; i++) {
+	let short = shorts[i];
+	short.type = 'shortcut';
+	short.tab = 4;
+	opts.push(short);
 }
-].forEach(function(short) {
-		short.type = 'shortcut';
-		short.tab = 4;
-		opts.push(short);
-	});
 
 module.exports = opts;

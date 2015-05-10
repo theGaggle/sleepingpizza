@@ -1,6 +1,7 @@
 /*
  * Handles the brunt of the post-related websocket calls
  */
+'use strict';
 
 var $ = require('jquery'),
 	common = require('../common'),
@@ -23,7 +24,7 @@ dispatcher[common.INSERT_POST] = function(msg) {
 	var el;
 	const msgNonce = msg.nonce;
 	delete msg.nonce;
-	const myNonce = posts.nonce.get_nonces()[msgNonce];
+	const myNonce = posts.nonce.get()[msgNonce];
 	var bump = state.page.get('live');
 	if (myNonce && myNonce.tab === state.page.get('tabID')) {
 		// posted in this tab; transform placeholder
@@ -32,21 +33,16 @@ dispatcher[common.INSERT_POST] = function(msg) {
 		main.postSM.feed('alloc', msg);
 		bump = false;
 		// delete only after a delay so all tabs notice that it's ours
-		setTimeout(posts.nonce.destroy_nonce.bind(null, msgNonce), 10000);
+		setTimeout(posts.nonce.destroy.bind(null, msgNonce), 10000);
 		// if we've already made a placeholder for this post, use it
 		if (main.postForm && main.postForm.el)
 			el = main.postForm.el;
 	}
-
 	// Add to my post set
 	if (myNonce) {
 		msg.mine = true;
 		state.mine.write(msg.num, state.mine.now());
 	}
-
-	// TODO: Shift the parrent sections replies on board pages
-
-	// TODO: Bump thread to top, if not saging
 
 	new posts[isThread ? 'Section' : 'Article']({
 		// Create model
@@ -54,6 +50,17 @@ dispatcher[common.INSERT_POST] = function(msg) {
 		id: msg.num,
 		el: el
 	});
+
+	if (isThread)
+		return;
+	var parent = state.posts.get(msg.op);
+	if (!parent)
+		return;
+	parent.get('replies').push(msg.num);
+	parent.trigger('shiftReplies');
+	// Bump thread to page top
+	if (!common.is_sage(msg.email) && bump)
+		parent.trigger('bump');
 };
 
 // Move thread to the archive board
@@ -86,8 +93,6 @@ dispatcher[common.UPDATE_POST] = function(msg) {
 	var extra = msg[5],
 		model = state.posts.get(num);
 
-	// TODO: Add backlinks
-
 	if (model) {
 		model.set({
 			body: model.get('body') + msg[1],
@@ -105,50 +110,29 @@ dispatcher[common.UPDATE_POST] = function(msg) {
 		return;
 	}
 
-	// TODO: Make this prettier
-	var bq = $('#' + num + ' > blockquote');
-	if (bq.length) {
-		main.oneeSama.dice = extra && extra.dice;
-		main.oneeSama.links = links || {};
-		main.oneeSama.callback = inject;
-		main.oneeSama.buffer = bq;
-		main.oneeSama.state = msgState;
-		main.oneeSama.fragment(msg[1]);
-	}
-};
-
-// Add various additional tags inside the blockqoute
-var inject = exports.inject = function(frag) {
-	var $dest = this.buffer;
-	for (var i = 0; i < this.state[1]; i++)
-		$dest = $dest.children('del:last');
-	if (this.state[0] == common.S_QUOTE)
-		$dest = $dest.children('em:last');
-	if (this.strong)
-		$dest = $dest.children('strong:last');
-	var out = null;
-	if (frag.safe) {
-		var m = frag.safe.match(/^<(\w+)>$/);
-		if (m)
-			out = document.createElement(m[1]);
-		else if (/^<\/\w+>$/.test(frag.safe))
-			out = '';
-	}
-	if (out === null) {
-		if (Array.isArray(frag))
-			out = $(common.flatten(frag).join(''));
-		else
-			out = common.escape_fragment(frag);
-	}
-	if (out)
-		$dest.append(out);
-	return out;
+	if (!model)
+		return;
+	model.trigger('updateBody', {
+		dice: extra && extra.dice,
+		links: links || {},
+		state: msgState,
+		frag: msg[1]
+	});
 };
 
 // Make the text spoilers toggle revealing on click
-var touchable_spoiler_tag = exports.touchable_spoiler_tag = function(del) {
+main.$doc.on('click', 'del', function (event) {
+	if (!event.spoilt) {
+		event.spoilt = true;
+		$(event.target).toggleClass('reveal');
+	}
+});
+
+// For mobile
+function touchable_spoiler_tag(del) {
 	del.html = '<del onclick="void(0)">';
-};
+}
+exports.touchable_spoiler_tag = touchable_spoiler_tag
 main.oneeSama.hook('spoilerTag', touchable_spoiler_tag);
 
 dispatcher[common.FINISH_POST] = function(msg) {
@@ -160,13 +144,13 @@ dispatcher[common.FINISH_POST] = function(msg) {
 };
 
 dispatcher[common.DELETE_POSTS] = function(msg) {
-	msg.forEach(function(num) {
-		var model = state.posts.get(num);
+	for (let i = 0, lim = msg.length; i < lim; i++) {
+		let model = state.posts.get(msg[i]);
 		if (model)
-			model.destroy();
+			model.remove();
 
 		// TODO: Free up post focus, if any
-	});
+	}
 };
 
 dispatcher[common.DELETE_THREAD] = function(msg, op) {
@@ -181,37 +165,37 @@ dispatcher[common.DELETE_THREAD] = function(msg, op) {
 			return;
 	}
 
-	var model = state.getThread(op);
+	var model = state.posts.get(op);
 	if (model)
-		model.destroy();
+		model.remove();
 };
 
 dispatcher[common.LOCK_THREAD] = function(msg, op) {
-	var model = state.getThread(op);
+	var model = state.posts.get(op);
 	if (model)
 		model.set('locked', true);
 };
 
 dispatcher[common.UNLOCK_THREAD] = function(msg, op) {
-	var model = state.getThread(op);
+	var model = state.posts.get(op);
 	if (model)
 		model.set('locked', false);
 };
 
 dispatcher[common.DELETE_IMAGES] = function(msg) {
-	msg.forEach(function(num) {
-		var model = state.posts.get(num);
+	for (let i = 0, lim = msg.length; i < lim; i++) {
+		let model = state.posts.get(msg[i]);
 		if (model)
 			model.unset('image');
-	});
+	}
 };
 
 dispatcher[common.SPOILER_IMAGES] = function(msg) {
-	msg.forEach(function(info) {
-		var model = state.posts.get(info[0]);
+	for (let i = 0, lim = msg.length; i < lim; i++) {
+		var model = state.posts.get(msg[i][0]);
 		if (model)
-			model.trigger('spoiler',info[1]);
-	});
+			model.trigger('spoiler',msg[i][1]);
+	}
 };
 
 dispatcher[common.SYNCHRONIZE] = main.connSM.feeder('sync');
