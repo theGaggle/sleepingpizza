@@ -1,7 +1,11 @@
 'use strict';
 
+// Some hot configs need to be be available when common/ is required
+var HOT = exports.hot = require('../config/hot').hot;
+
 var _ = require('underscore'),
 	async = require('async'),
+	common = require('../common'),
 	config = require('../config'),
 	crypto = require('crypto'),
 	fs = require('fs'),
@@ -27,7 +31,6 @@ exports.dbCache = {
 	ranges: {}
 };
 
-var HOT = exports.hot = {};
 var RES = exports.resources = {};
 exports.clientHotConfig = {};
 exports.clientConfigHash = '';
@@ -129,8 +132,9 @@ function reloadModClient(cb) {
 	});
 }
 
-function reloadClient(cb) {
-	var stream = fs.createReadStream('./www/js/client.js'),
+// Read JS bundles and generate MD5 hashes
+function hashBundle(name, cb) {
+	let stream = fs.createReadStream(`./www/js/${name}.js`),
 		hash = crypto.createHash('md5');
 	stream.once('error', function(err) {
 		cb(err);
@@ -139,7 +143,7 @@ function reloadClient(cb) {
 		hash.update(data);
 	});
 	stream.once('end', function() {
-		HOT.CLIENT_HASH = hash.digest('hex').slice(0, 8);
+		HOT[`${name}_hash`] = hash.digest('hex').slice(0, 8);
 		cb(null);
 	});
 }
@@ -267,9 +271,14 @@ function build_schedule(schedule){
 			plans = filler[Math.floor(Math.random() * filler.length)];
 		if (!time)
 			time = 'all day';
-		table += `<tr><td><b>${day}&nbsp;&nbsp;</b></td>`
-			+ `<td>${plans}&nbsp;&nbsp;</td>`
-			+ `<td>${time}</td></tr>`;
+		table += common.parseHTML
+			`<tr>
+				<td>
+					<b>${day}&nbsp;&nbsp;</b>
+				</td>
+				<td>${plans}&nbsp;&nbsp;</td>
+				<td>${time}</td>
+			</tr>`;
 	}
 	table += '</table>';
 	return table;
@@ -288,14 +297,9 @@ function build_FAQ(faq) {
 
 // Hardcore pornography
 function buildOptions(lang) {
-
-	/*
-	 XXX: Can't require common/util here, because circular dependancy. Hmm, maybe
-	 move these render functions somewhere else? FAQ and schefule should end up
-	 in common eventually.
-	 */
-	let html = '<div class="bmodal" id="options-panel">'
-		+ '<ul class="option_tab_sel">';
+	let html = common.parseHTML
+		`<div class="bmodal" id="options-panel">
+			<ul class="option_tab_sel">`;
 	const tabs = lang.tabs;
 	// Render tab butts
 	for (let i = 0, l = tabs.length; i < l; i++) {
@@ -389,8 +393,13 @@ function renderExportImport(lang) {
 		html += `<a id="${id}" title="${ln[1]}">${ln[0]}</a> `;
 	}
 	// Hidden file input for uploading the JSON
-	html += '<input type="file" style="display: none;" id="importSettings"'
-		+ ' name="Import Settings"></input>';
+	html += common.parseHTML
+		`<input type="file"
+			style="display: none;"
+			id="importSettings"
+			name="Import Settings"
+		>
+		</input>`;
 	return html;
 }
 
@@ -398,7 +407,8 @@ function reload_hot_resources (cb) {
 	async.series([
 		reload_hot_config,
 		reloadModClient,
-		reloadClient,
+		hashBundle.bind(null, 'client'),
+		hashBundle.bind(null, 'vendor'),
 		reload_resources
 	], cb);
 }
