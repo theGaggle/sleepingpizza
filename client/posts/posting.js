@@ -15,13 +15,13 @@ var $ = require('jquery'),
 	main = require('../main'),
 	nonce = require('./nonce'),
 	options = require('../options'),
-	state = require('../state');
-
+        scroll = require('../scroll'),
+	state = require('../state'),
+            thread = state.page.get('thread');
+    
 var connSM = main.connSM,
 	postSM = main.postSM;
-
 const uploadingMessage = 'Uploading...';
-
 var postForm = main.postForm,
 // Minimal size of the input buffer
 	inputMinSize = 300;
@@ -100,9 +100,9 @@ main.dispatcher[common.IMAGE_STATUS] = function(msg) {
 		postForm.dispatch(msg[0]);
 };
 
-main.$doc.on('click', 'aside a', function() {
+main.$doc.on('click', 'aside a', _.wrap(function () {
 	postSM.feed('new', $(this).parent());
-});
+}, scroll.followLock));
 
 main.$doc.on('keydown', handle_shortcut);
 
@@ -117,7 +117,9 @@ function handle_shortcut(event) {
 			var $aside = state.page.get('thread') ? main.$threads.find('aside')
 				: $ceiling().next();
 			if ($aside.is('aside') && $aside.length === 1) {
-				postSM.feed('new', $aside);
+				scroll.followLock(function() {
+                                    postSM.feed('new', $aside);
+                                });
 				used = true;
 			}
 			break;
@@ -129,7 +131,7 @@ function handle_shortcut(event) {
 			break;
 		case opts.done:
 			if (postForm && !postForm.$submit.attr('disabled')) {
-					postForm.finish();
+					postForm.finish_wrapped();
 					used = true;
 			}
 			break;
@@ -175,8 +177,10 @@ main.oneeSama.hook('insertOwnPost', function (info) {
 			op = info.links[num];
 		if (!op)
 			return;
-		var $ref = $(flatten([main.postForm.imouto.post_ref(num, op, false)])
-			.join(''));
+		var $ref = $(common.flatten(
+				main.postForm.imouto.post_ref(num, op, false)
+			).join('')
+		);
 		$a.attr('href', $ref.attr('href')).removeAttr('class');
 		const refText = $ref.text();
 		if (refText != text)
@@ -188,7 +192,7 @@ var ComposerView = Backbone.View.extend({
 	events: {
 		'input #trans': 'onInput',
 		'keydown #trans': 'onKeyDown',
-		'click #done': 'finish',
+		'click #done': 'finish_wrapped',
 		'click #toggle': 'onToggle'
 	},
 
@@ -394,7 +398,7 @@ var ComposerView = Backbone.View.extend({
 			this.model.set({cancelled: true});
 		}
 		else
-			this.finish();
+			this.finish_wrapped();
 	},
 
 	onImageChosen: function() {
@@ -824,7 +828,10 @@ var ComposerView = Backbone.View.extend({
 	uploadError: function(msg) {
 		if (this.model.get('cancelled'))
 			return;
-		this.model.set({uploadStatus: msg, uploading: false});
+		this.model.set({
+			uploadStatus: msg,
+			uploading: false
+		});
 		if (this.$uploadForm)
 			this.$uploadForm.find('input[name=alloc]').remove();
 	},
@@ -874,7 +881,8 @@ var ComposerView = Backbone.View.extend({
 
 	// Extend with imager.js methods
 	renderImage: imager.Hidamari.renderImage,
-	autoExpandImage: imager.Hidamari.autoExpandImage
+	// Overrides automatic image expansion, if any
+	autoExpandImage: function() {}
 });
 
 function spoilerPaneUrl(sp) {
@@ -904,3 +912,83 @@ window.addEventListener('message', function(event) {
 	if (msg !== 'OK' && postForm)
 		postForm.uploadError(msg);
 }, false);
+
+//Adds a followLock check for finishing posts 
+(function () {
+	var CV = ComposerView.prototype;
+	CV.finish_wrapped = _.wrap(CV.finish, scroll.followLock);
+})();
+
+//Drag and Drop Functionality
+function dragonDrop(e) {
+    e.stopPropagation();
+    e.preventDefault();
+    var files = e.dataTransfer.files;
+    if (!files.length)
+            return;
+    if (!postForm) {
+            scroll.followLock(function () {
+                    if (thread)
+                            main.openPostBox(thread);
+                    else {
+                            var $s = $(e.target).closest('section');
+                            if (!$s.length)
+                                    return;
+                            main.openPostBox($s.attr('id'));
+                    }
+            });
+    }
+    else {
+            var attrs = postForm.model.attributes;
+            if (attrs.uploading || attrs.uploaded)
+                    return;
+    }
+
+    if (files.length > 1) {
+            postForm.uploadError('Too many files.');
+            return;
+    }
+    
+    // Drag and drop does not supply a fakepath to file, so we have to use
+    // a separate upload form from the postForm one. Meh.
+    var extra = postForm.prepareUpload();
+    var fd = new FormData();
+    fd.append('image', files[0]);
+    for (var k in extra)
+            fd.append(k, extra[k]);
+    // Can't seem to jQuery this shit
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', imageUploadURL());
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.onreadystatechange = upload_shita;
+    xhr.send(fd);
+
+    postForm.notifyUploading();
+}
+
+function upload_shita() {
+        if (this.readyState != 4 || this.status == 202)
+                return;
+        var err = this.responseText;
+        // Everything just fine. Don't need to report.
+        if (/legitimate imager response/.test(err))
+                return;
+        postForm.uploadError(err);
+}
+
+function stop_drag(e) {
+        e.stopPropagation();
+        e.preventDefault();
+}
+
+function setupUploadDrop(e) {
+        function go(nm, f) { e.addEventListener(nm, f, false); }
+        go('dragenter', stop_drag);
+        go('dragexit', stop_drag);
+        go('dragover', stop_drag);
+        go('drop', dragonDrop);
+}
+
+$(function () {
+        setupUploadDrop(document.body);
+});

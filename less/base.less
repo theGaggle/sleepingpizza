@@ -50,6 +50,10 @@ section > small {
 threads > aside {
 	margin: 1em;
 }
+a.disabled {
+  pointer-events: none;
+  color: inherit;
+}
 .embed {
 	background-color: rgba(255, 255, 255, 0.5);
 	border-radius: 4px;
@@ -94,6 +98,12 @@ figcaption {
 .imageSearch {
 	font-weight: bold;
 	text-decoration: none;
+  &:before {
+	 content: " ";
+  }
+  &:after {
+	 content: " ";
+  }
 }
 figure {
 	display: inline;
@@ -129,7 +139,7 @@ h3 {
 	pointer-events: none;
 	display: flex;
 	z-index: 300;
-	img, video {
+	& > img, & > video {
 		max-height: 100%;
 		max-width: 100%;
 		margin: auto auto;
@@ -324,7 +334,7 @@ span.control .popup-menu {
 	position: fixed;
 	display: table;
 	text-align: center;
-	white-space: pre-line !important;
+	white-space: pre-line;
 	font-size: 120%;
 	right: 0;
 	left: 0;

@@ -23,10 +23,9 @@ var Article = module.exports = Backbone.View.extend({
 		 * An element is not empty only on postForms
 		 */
 		if (this.$el.is(':empty'))
-			this.render();
+			this.render().insertIntoDOM();
 		this.listenTo(this.model, {
 			'change:editing': this.renderEditing,
-			'change:image': this.renderImage,
 			remove: this.remove
 		});
 		this.initCommon();
@@ -36,12 +35,15 @@ var Article = module.exports = Backbone.View.extend({
 		// Pass this model's links to oneeSama for renderring
 		main.oneeSama.links = this.model.get('links');
 		this.setElement(main.oneeSama.mono(this.model.attributes));
-		// Insert into section
+		return this;
+	},
+
+	insertIntoDOM: function() {
 		main.$threads.children('#' + this.model.get('op'))
 			.children('blockquote, .omit, form, article[id]:last')
 			.last()
 			.after(this.$el);
-		return this;
+		this.autoExpandImage();
 	},
 
 	renderEditing: function (model, editing) {

@@ -64,27 +64,29 @@ build('client', browserify(require.resolve('./client/main.js'),
 			'jquery',
 			'jquery.cookie',
 			'underscore',
-			'backbone'
+			'backbone',
+			'backbone.radio'
 		]
 	})
-		/*
-		 Trasnpile to ES5. We use already implemented native functionality, where
-		 possible. These are mainly to prevent the minifier from throwing errors
-		 and some syntactic sugar, that is not yet implemented. Nobody cares about
-		 your ancient retarded browser.
-		 */
+		// Trasnpile to ES5. Use mostly default, because minifier support is
+		// still shit.
 		.transform(babelify.configure({
-			whitelist: [
-				'es6.blockScoping',
-				'es6.arrowFunctions',
-				'es6.parameters.default',
-				'es6.parameters.rest',
-				'es6.spread',
-				'es6.properties.computed',
-				'es6.properties.shorthand',
-				'es6.spec.templateLiterals',
-				'es6.templateLiterals',
-				'strict'
+			// MUH PERFORMINCE
+			blacklist: [
+				'es3.memberExpressionLiterals',
+				'es3.propertyLiterals',
+				'es5.properties.mutators',
+				'es6.constants',
+				'flow',
+				'react',
+				'jscript',
+				'react',
+				'reactCompat',
+				'regenerator',
+				'runtime'
+			],
+			optional: [
+				'es6.spec.blockScoping'
 			]
 		}))
 		// Exclude these requires on the client
@@ -99,7 +101,8 @@ build('vendor', browserify({
 		'jquery',
 		'jquery.cookie',
 		'underscore',
-		'backbone'
+		'backbone',
+		'backbone.radio'
 	],
 	debug: true
 }));
