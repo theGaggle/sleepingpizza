@@ -6,9 +6,9 @@
 
 let $ = require('jquery'),
 	Backbone = require('backbone'),
-	common = require('../../common'),
 	main = require('../main'),
-	options = require('../options');
+	common = main.common,
+	options = main.options;
 
 let Hidamari = exports.Hidamari = {
 	/*
@@ -28,16 +28,11 @@ let Hidamari = exports.Hidamari = {
 		// Remove image on mod deletion
 		if (!image)
 			return;
-		const html = common.flatten(main.oneeSama.gazou(image, reveal))
-			.join('');
-		let $header = this.$el.children('header');
-		if (this.model.get('op'))
-			// A post
-			$header.after(html);
-		else
-			// A thread
-			$header.before(html);
-
+		this.$el
+			.children('header')
+			[this.model.get('op') ? 'after' : 'before'](
+				common.join(main.oneeSama.gazou(image, reveal))
+			);
 		this.model.set({
 			// Only used in hidden thumbnail mode
 			thumbnailRevealed: reveal || options.get('thumbs') === 'hidden',
@@ -80,7 +75,9 @@ let Hidamari = exports.Hidamari = {
 	// Reveal/hide thumbnail by clicking [Show]/[Hide] in hidden thumbnail mode
 	toggleThumbnailVisibility: function(e) {
 		e.preventDefault();
-		this.renderImage(!this.model.get('thumbnailRevealed'));
+		main.command('scroll:follow', ()=>
+			this.renderImage(!this.model.get('thumbnailRevealed'))
+		);
 	},
 
 	imageClicked: function(e){
@@ -89,7 +86,9 @@ let Hidamari = exports.Hidamari = {
 		// Remove image hover preview, if any
 		options.trigger('imageClicked');
 		e.preventDefault();
-		this.toggleImageExpansion(!this.model.get('imageExpanded'));
+		main.command('scroll:follow', ()=>
+			this.toggleImageExpansion(!this.model.get('imageExpanded'))
+		);
 	},
 
 	toggleImageExpansion: function(expand, img = this.model.get('image')) {
@@ -204,10 +203,10 @@ let ExpanderModel = Backbone.Model.extend({
 	id: 'massExpander',
 
 	initialize: function() {
-		main.$threads.on('click', '#expandImages', function(e) {
+		main.$threads.on('click', '#expandImages', (e) => {
 			e.preventDefault();
 			this.toggle();
-		}.bind(this));
+		});
 	},
 
 	toggle: function() {
@@ -220,3 +219,4 @@ let ExpanderModel = Backbone.Model.extend({
 });
 
 let massExpander = exports.massExpander = new ExpanderModel();
+main.comply('massExpander:unset', () => massExpander.unset());

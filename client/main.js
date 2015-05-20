@@ -24,7 +24,22 @@ Backbone.$ = $;
 var radio = require('backbone.radio');
 
 // Central aplication object and message bus
-let main = module.exports = radio.channel('main')
+let main = module.exports = radio.channel('main');
+
+/*
+ Ofload expensive and not that neccessary loops to after the main client is
+ started.
+ */
+main._deferred = [];
+main.defer = function(func) {
+	main._deferred.push(func);
+	return main;
+};
+main.start = function() {
+	let def = this._deferred;
+	for (let i = 0, l = def.length; i < l; i++)
+		def[i]();
+};
 
 /*
  * Since the language pack contains functions and we can not simply use those
@@ -44,7 +59,6 @@ main.lang = window.lang;
  */
 main.config = window.config;
 
-
 if (main.config.DEBUG) {
 	// Export Backbone instance for easier debugging
 	window.Backbone = Backbone;
@@ -53,16 +67,10 @@ if (main.config.DEBUG) {
 	radio.tuneIn('main');
 }
 
-
 main.isMobile = /Android|iP(?:hone|ad|od)|Windows Phone/
 	.test(navigator.userAgent);
 // Store them here, to avoid requiring modules in the wrong order
-main.send = function() {};
-main.serverTimeOffset = 0;
 main.dispatcher = {};
-main.postForm = null;
-main.postModel = null;
-main.openPostBox = function() {};
 // Read-only boards gets expanded later
 main.readOnly = ['archive'];
 
@@ -73,14 +81,13 @@ main.readOnly = ['archive'];
 let state = main.state = require('./state');
 let	common = main.common = require('../common');
 // Initialise main rendering object
-var oneeSama = main.oneeSama = new common.OneeSama(function(num) {
+let oneeSama = main.oneeSama = new common.OneeSama(function(num) {
 	// Core post link handler
-	var frag;
+	let frag;
 	if (this.links && num in this.links) {
-		var op = this.links[num],
-			model = state.posts.get(num),
-			desc = model && model.get('mine') && '(You)';
-		frag = this.post_ref(num, op, desc);
+		let model = state.posts.get(num);
+		const desc = model && model.get('mine') && '(You)';
+		frag = this.post_ref(num, this.links[num], desc);
 	}
 	else
 		frag = '>>' + num;
@@ -89,28 +96,35 @@ var oneeSama = main.oneeSama = new common.OneeSama(function(num) {
 oneeSama.full = oneeSama.op = state.page.get('thread');
 main.options = require('./options');
 
-main.connSM = new common.FSM('load');
-main.postSM = new common.FSM('none');
-state.page.set('tabID', common.random_id());
-
 // Cached jQuery objects
 main.$doc = $(document);
 main.$threads = $('threads');
 main.$name = $('input[name=name]');
 main.$email = $('input[name=email]');
 
+main.connSM = new common.FSM('load');
+main.postSM = new common.FSM('none');
+state.page.set('tabID', common.random_id());
 
+main.etc = require('./etc');
+main.time = require('./time');
+main.scroll = require('./scroll');
+main.notify = require('./notify');
 
 // The require chain also loads some core dependancies
 var Extract = require('./extract');
 new Extract();
 
+main.posts = require('./posts');
 main.banner = require('./banner');
 main.background = require('./options/background');
 
 // Start the client
-require('./client');
+main.client = require('./client');
 
 // Load auxilary modules
-require('./history');
-require('./hover');
+main.history = require('./history');
+main.hover = require('./hover');
+main.drop = require('./drop');
+
+main.start();

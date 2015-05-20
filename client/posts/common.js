@@ -1,15 +1,14 @@
 /*
  * Common methods to both OP and regular posts
  */
-'use strict';
 
 var $ = require('jquery'),
-	common = require('../../common'),
-	imager = require('./imager'),
+	_ = require('underscore'),
 	main = require('../main'),
-	options = require('../options'),
-	state = require('../state'),
-	time = require('../time');
+	imager = require('./imager'),
+	common = main.common,
+	options = main.options,
+	state = main.state;
 
 module.exports = {
 	events: {
@@ -95,7 +94,7 @@ module.exports = {
 	renderTime: function(model, rtime = options.get('relativeTime')) {
 		if (!this.$time) {
 			this.$time = this.$el.find('time').first();
-			this.time = time.date_from_time_el(this.$time[0]).getTime();
+			this.time = main.request('dateFromEl', this.$time[0]).getTime();
 		}
 		if (this.hasRelativeTime)
 			this.$time.html(main.oneeSama.time(this.time));
@@ -108,26 +107,25 @@ module.exports = {
 	renderBacklinks: function(model, links) {
 		// No more backlinks, because posts deleted or something
 		if (!links && this.$backlinks)
-			return this.$backlinks.remove();
+			return main.command('scroll:follow', () => this.$backlinks.remove());
 		if (!this.$backlinks) {
 			this.$backlinks = $('<small/>')
 				.insertAfter(this.$el.children('blockquote'))
 		}
-		var html = 'Replies:',
-			// Link points to different thread
-			diff;
-		const num = this.model.get('num'),
-			op = this.model.get('op') || num;
+		let html = 'Replies:';
+		const thread = state.page.get('thread'),
+			notBoard = thread !== 0;
 		for (var key in links) {
 			if (!links.hasOwnProperty(key))
 				continue;
-			diff = links[key] != (op);
+			// points to a different thread from the current
+			const diff = links[key] !== thread;
 			html += common.parseHTML
 				` <a class="history" href="${diff && links[key]}#${key}">
-					&gt;&gt;${key}${diff && ' →'}
+					&gt;&gt;${key}${diff && notBoard && ' →'}
 				</a>`;
 		}
-		this.$backlinks.html(html);
+		main.command('scroll:follow', () => this.$backlinks.html(html));
 	},
 
 	// Admin JS injections
@@ -168,8 +166,11 @@ module.exports = {
 
 		if (isInside('baseNode') && isInside('focusNode'))
 			sel = gsel.toString();
-		main.openPostBox(num);
-		main.postForm.addReference(num, sel);
+		main.command('scroll:follow', function() {
+			main.command('openPostBox', num);
+			main.request('postForm').addReference(num, sel);
+		});
 	}
 };
 
+_.extend(module.exports, imager.Hidamari);

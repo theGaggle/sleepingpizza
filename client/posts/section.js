@@ -5,8 +5,8 @@
 var $ = require('jquery'),
 	_ = require('underscore'),
 	Backbone = require('backbone'),
-	imager = require('./imager'),
 	main = require('../main'),
+	oneeSama = main.oneeSama,
 	postCommon = require('./common'),
 	state = require('../state');
 
@@ -34,12 +34,15 @@ var Section = module.exports = Backbone.View.extend({
 	},
 
 	render: function() {
-		main.oneeSama.links = this.model.get('links');
-		this.setElement(main.oneeSama.monomono(this.model.attributes).join(''));
+		let attrs = this.model.attributes;
+		oneeSama.links = attrs.links;
+		this.setElement(oneeSama.monomono(attrs).join(''));
 		this.insertToTop();
 		// Insert reply box into the new thread
-		var $reply = $(main.oneeSama.replyBox());
-		if (state.ownPosts.hasOwnProperty(this.model.get('num')) || main.postForm)
+		let $reply = $(oneeSama.replyBox());
+		if (state.ownPosts.hasOwnProperty(attrs.num)
+			|| !!main.request('postForm')
+		)
 			$reply.hide();
 		this.$el.after($reply, '<hr>');
 		return this;
@@ -99,7 +102,7 @@ var Section = module.exports = Backbone.View.extend({
 				.insertAfter(this.$el.children('blockquote'));
 		}
 		const page = state.page.attributes;
-		var html = main.oneeSama.lang.abbrev_msg(omit,
+		var html = oneeSama.lang.abbrev_msg(omit,
 			this.model.get('image_omit'),
 			// [See All] link URL
 			page.thread && page.href.split('?')[0]
@@ -115,4 +118,4 @@ var Section = module.exports = Backbone.View.extend({
 });
 
 // Extend with common mixins
-_.extend(Section.prototype, imager.Hidamari, postCommon);
+_.extend(Section.prototype, postCommon);

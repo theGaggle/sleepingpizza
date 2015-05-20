@@ -5,7 +5,8 @@ General post backbone models
 
 var _ = require('underscore'),
 	Backbone = require('backbone'),
-	state = require('../state');
+	main = require('../main'),
+	state = main.state;
 
 exports.Post = Backbone.Model.extend({
 	idAttribute: 'num',
@@ -30,6 +31,7 @@ exports.Post = Backbone.Model.extend({
 		// Remove from post collection
 		state.posts.remove(this);
 	},
+
 	addLinks: function(links){
 		if(!links)
 			return;
@@ -38,9 +40,10 @@ exports.Post = Backbone.Model.extend({
 			return this.set({links: links});
 		_.extend(old,links);
 		this.set({links:old});
-		//If we get here we changed something for sure, but as we are using the same ref backbone will ignore it
-		//so we have to force the event to trigger.
-		this.trigger('change:links',this,old);
+		// If we get here we changed something for sure, but as we are using the
+		// same ref backbone will ignore it so we have to force the event to
+		// trigger.
+		this.trigger('change:links', this, old);
 	},
 
 	// Pass this post's links to the central model
@@ -48,7 +51,10 @@ exports.Post = Backbone.Model.extend({
 		var old, newLinks;
 		const num = this.get('num'),
 			op = this.get('op') || num;
+		const mine = state.mine.read_all();
 		for (let key in links) {
+			if (mine[key])
+				main.command('repliedToMe', this);
 			old = state.linkerCore.get(key);
 			newLinks = old ? _.clone(old) : {};
 			newLinks[num] = op;

@@ -6,26 +6,30 @@
 var $ = require('jquery'),
 	_ = require('underscore'),
 	Backbone = require('backbone'),
-	client = require('../client'),
-	common = require('../../common'),
 	embed = require('./embed'),
+	etc = require('../etc'),
 	ident = require('./identity'),
 	imager = require('./imager'),
 	inject = require('./common').inject,
 	main = require('../main'),
-	nonce = require('./nonce'),
-	options = require('../options'),
-        scroll = require('../scroll'),
-	state = require('../state'),
-            thread = state.page.get('thread');
-    
-var connSM = main.connSM,
-	postSM = main.postSM;
-const uploadingMessage = 'Uploading...';
-var postForm = main.postForm,
-// Minimal size of the input buffer
-	inputMinSize = 300;
+	common = main.common,
+	options = main.options,
+	state = main.state;
 
+let connSM = main.connSM,
+	postSM = main.postSM,
+	postForm, postModel;
+/*
+ The variable gets overwritten, so a simple refference will not do. Calling a
+ fucntion to retrieve the var each time solves the problem.
+ */
+main.reply('postForm', () => postForm);
+main.reply('postModel', () => postModel);
+
+const uploadingMessage = 'Uploading...';
+
+// Minimal size of the input buffer
+let	inputMinSize = 300;
 // For mobile
 if (window.screen && screen.width <= 320)
 	inputMinSize = 50;
@@ -54,8 +58,7 @@ postSM.act('none + sync, draft, alloc + done -> ready', function() {
 
 	if (postForm) {
 		postForm.remove();
-		main.postForm = postForm = null;
-		main.postModel = null;
+		postForm = postModel = null;
 	}
 	main.$threads.find('aside').show();
 });
@@ -73,9 +76,8 @@ postSM.act('ready + new -> draft', function($aside) {
 	if (op)
 		state.posts.get(op).trigger('shiftReplies', true);
 
-	main.postModel = new ComposerModel({op: op});
-	main.postForm = postForm = new ComposerView({
-		model: main.postModel,
+	postForm = new ComposerView({
+		model: postModel = new ComposerModel({op: op}),
 		$dest: $aside,
 		$sec: $sec
 	});
@@ -100,9 +102,11 @@ main.dispatcher[common.IMAGE_STATUS] = function(msg) {
 		postForm.dispatch(msg[0]);
 };
 
-main.$doc.on('click', 'aside a', _.wrap(function () {
-	postSM.feed('new', $(this).parent());
-}, scroll.followLock));
+main.$doc.on('click', 'aside a', function() {
+	main.command('scroll:follow', () =>
+		postSM.feed('new', $(this).parent())
+	);
+});
 
 main.$doc.on('keydown', handle_shortcut);
 
@@ -117,9 +121,9 @@ function handle_shortcut(event) {
 			var $aside = state.page.get('thread') ? main.$threads.find('aside')
 				: $ceiling().next();
 			if ($aside.is('aside') && $aside.length === 1) {
-				scroll.followLock(function() {
-                                    postSM.feed('new', $aside);
-                                });
+				main.command('scroll:follow', function() {
+					postSM.feed('new', $aside);
+				});
 				used = true;
 			}
 			break;
@@ -165,7 +169,7 @@ function $ceiling() {
 
 // TODO: Unify self-updates with OneeSama; this is redundant
 main.oneeSama.hook('insertOwnPost', function (info) {
-	if (!main.postForm || !info.links)
+	if (!postForm || !info.links)
 		return;
 	postForm.$buffer.find('.nope').each(function() {
 		var $a = $(this);
@@ -177,11 +181,8 @@ main.oneeSama.hook('insertOwnPost', function (info) {
 			op = info.links[num];
 		if (!op)
 			return;
-		var $ref = $(common.flatten(
-				main.postForm.imouto.post_ref(num, op, false)
-			).join('')
-		);
-		$a.attr('href', $ref.attr('href')).removeAttr('class');
+		let $ref = $(common.join([postForm.imouto.post_ref(num, op, false)]));
+		$a.attr('href', $ref.attr('href')).attr('class', 'history');
 		const refText = $ref.text();
 		if (refText != text)
 			$a.text(refText);
@@ -209,7 +210,7 @@ var ComposerView = Backbone.View.extend({
 		this.char_count = 0;
 
 		// The form's own dedicated renderer instance
-		this.imouto = new common.OneeSama(function(num) {
+		let imouto = this.imouto = new common.OneeSama(function(num) {
 			var $sec = $('#' + num);
 			if (!$sec.is('section'))
 				$sec = $sec.closest('section');
@@ -219,15 +220,15 @@ var ComposerView = Backbone.View.extend({
 				this.callback(common.safe(`<a class="nope">&gt;&gt;${num}</a>`));
 		});
 		// Initialise the renderer instance
-		this.imouto.callback = inject;
-		this.imouto.op = state.page.get('thread');
-		this.imouto.state = [common.S_BOL, 0];
+		imouto.callback = inject;
+		imouto.op = state.page.get('thread');
+		imouto.state = [common.S_BOL, 0];
 		// TODO: Convert current OneeSama.state array to more flexible object
-		this.imouto.state2 = {spoiler: 0};
-		this.imouto.$buffer = this.$buffer;
-		this.imouto.eLinkify = main.oneeSama.eLinkify;
-		this.imouto.hook('spoilerTag', client.touchable_spoiler_tag);
-		main.oneeSama.trigger('imouto', this.imouto);
+		imouto.state2 = {spoiler: 0};
+		imouto.$buffer = this.$buffer;
+		imouto.eLinkify = main.oneeSama.eLinkify;
+		imouto.hook('spoilerTag', etc.touchable_spoiler_tag);
+		main.oneeSama.trigger('imouto', imouto);
 	},
 
 	// Initial render
@@ -333,13 +334,15 @@ var ComposerView = Backbone.View.extend({
 			allocWait = attrs.sentAllocRequest && !attrs.num,
 			d = attrs.uploading || allocWait;
 		// Beware of undefined!
-		this.$submit.prop('disabled', !!d);
-		if (attrs.uploaded)
-			this.$submit.css({'margin-left': '0'});
-		this.$cancel.prop('disabled', !!allocWait);
-		this.$cancel.toggle(!!(!attrs.num || attrs.uploading));
-		this.$imageInput.prop('disabled', !!attrs.uploading);
-		this.$uploadStatus.html(attrs.uploadStatus);
+		main.command('scroll:follow', () => {
+			this.$submit.prop('disabled', !!d);
+			if (attrs.uploaded)
+				this.$submit.css({'margin-left': '0'});
+			this.$cancel.prop('disabled', !!allocWait);
+			this.$cancel.toggle(!!(!attrs.num || attrs.uploading));
+			this.$imageInput.prop('disabled', !!attrs.uploading);
+			this.$uploadStatus.html(attrs.uploadStatus);
+		});
 	},
 
 	renderSpoilerPane: function(model, sp) {
@@ -615,11 +618,14 @@ var ComposerView = Backbone.View.extend({
 		// Either get an allocation or send the committed text
 		const attrs = this.model.attributes;
 		if (!attrs.num && !attrs.sentAllocRequest) {
-			main.send([common.INSERT_POST, this.allocationMessage(text, null)]);
+			main.command('send', [
+				common.INSERT_POST,
+				this.allocationMessage(text, null)
+			]);
 			this.model.set({sentAllocRequest: true});
 		}
 		else if (attrs.num)
-			main.send(text);
+			main.command('send', text);
 		else
 			this.pending += text;
 
@@ -638,7 +644,7 @@ var ComposerView = Backbone.View.extend({
 
 	// Construct the message for post allocation in the database
 	allocationMessage: function(text, image) {
-		var msg = {nonce: nonce.create()};
+		var msg = {nonce: main.request('nonce:create')};
 
 		function opt(key, val) {
 			if (val)
@@ -696,7 +702,7 @@ var ComposerView = Backbone.View.extend({
 				'margin-left': '',
 				'padding-left': ''
 			});
-			main.send([common.FINISH_POST]);
+			main.command('send', [common.FINISH_POST]);
 			this.preserve = true;
 			if (this.isThread)
 				this.$el.append(main.oneeSama.replyBox());
@@ -704,10 +710,15 @@ var ComposerView = Backbone.View.extend({
 		postSM.feed('done');
 	},
 
+	// Adds a followLock check for finishing posts
+	finish_wrapped: function() {
+		main.command('scroll:follow', () => this.finish());
+	},
+
 	// Send any unstaged words
 	flushPending: function() {
 		if (this.pending) {
-			main.send(this.pending);
+			main.command('send', this.pending);
 			this.pending = '';
 		}
 	},
@@ -817,11 +828,14 @@ var ComposerView = Backbone.View.extend({
 		if (attrs.cancelled)
 			return;
 		if (!attrs.num && !attrs.sentAllocRequest) {
-			main.send([common.INSERT_POST, this.allocationMessage(null, msg)]);
+			main.command('send', [
+				common.INSERT_POST,
+				this.allocationMessage(null, msg)
+			]);
 			this.model.set({sentAllocRequest: true});
 		}
 		else {
-			main.send([common.INSERT_IMAGE, msg]);
+			main.command('send', [common.INSERT_IMAGE, msg]);
 		}
 	},
 
@@ -900,95 +914,15 @@ function imageUploadURL() {
 	return (main.config.UPLOAD_URL || '../upload/')
 		+ '?id=' + state.page.get('connID');
 }
+main.reply('imageUploadURL', imageUploadURL);
 
-main.openPostBox = function(num) {
-	var $a = main.$threads.find('#' + num);
-	postSM.feed('new',
-		$a.is('section') ? $a.children('aside') : $a.siblings('aside'));
-};
+main.comply('openPostBox', function(num) {
+	let $a = main.$threads.find('#' + num);
+	postSM.feed('new', $a[$a.is('section') ? 'children' : 'siblings']('aside'));
+});
 
 window.addEventListener('message', function(event) {
 	const msg = event.data;
 	if (msg !== 'OK' && postForm)
 		postForm.uploadError(msg);
 }, false);
-
-//Adds a followLock check for finishing posts 
-(function () {
-	var CV = ComposerView.prototype;
-	CV.finish_wrapped = _.wrap(CV.finish, scroll.followLock);
-})();
-
-//Drag and Drop Functionality
-function dragonDrop(e) {
-    e.stopPropagation();
-    e.preventDefault();
-    var files = e.dataTransfer.files;
-    if (!files.length)
-            return;
-    if (!postForm) {
-            scroll.followLock(function () {
-                    if (thread)
-                            main.openPostBox(thread);
-                    else {
-                            var $s = $(e.target).closest('section');
-                            if (!$s.length)
-                                    return;
-                            main.openPostBox($s.attr('id'));
-                    }
-            });
-    }
-    else {
-            var attrs = postForm.model.attributes;
-            if (attrs.uploading || attrs.uploaded)
-                    return;
-    }
-
-    if (files.length > 1) {
-            postForm.uploadError('Too many files.');
-            return;
-    }
-    
-    // Drag and drop does not supply a fakepath to file, so we have to use
-    // a separate upload form from the postForm one. Meh.
-    var extra = postForm.prepareUpload();
-    var fd = new FormData();
-    fd.append('image', files[0]);
-    for (var k in extra)
-            fd.append(k, extra[k]);
-    // Can't seem to jQuery this shit
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', imageUploadURL());
-    xhr.setRequestHeader('Accept', 'application/json');
-    xhr.onreadystatechange = upload_shita;
-    xhr.send(fd);
-
-    postForm.notifyUploading();
-}
-
-function upload_shita() {
-        if (this.readyState != 4 || this.status == 202)
-                return;
-        var err = this.responseText;
-        // Everything just fine. Don't need to report.
-        if (/legitimate imager response/.test(err))
-                return;
-        postForm.uploadError(err);
-}
-
-function stop_drag(e) {
-        e.stopPropagation();
-        e.preventDefault();
-}
-
-function setupUploadDrop(e) {
-        function go(nm, f) { e.addEventListener(nm, f, false); }
-        go('dragenter', stop_drag);
-        go('dragexit', stop_drag);
-        go('dragover', stop_drag);
-        go('drop', dragonDrop);
-}
-
-$(function () {
-        setupUploadDrop(document.body);
-});

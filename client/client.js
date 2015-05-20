@@ -22,9 +22,9 @@ dispatcher[common.INSERT_POST] = function(msg) {
 
 	// Did I create this post?
 	var el;
-	const msgNonce = msg.nonce;
+	const nonce = msg.nonce;
 	delete msg.nonce;
-	const myNonce = posts.nonce.get()[msgNonce];
+	const myNonce = main.request('nonce:get')[nonce];
 	var bump = state.page.get('live');
 	if (myNonce && myNonce.tab === state.page.get('tabID')) {
 		// posted in this tab; transform placeholder
@@ -32,11 +32,12 @@ dispatcher[common.INSERT_POST] = function(msg) {
 		main.oneeSama.trigger('insertOwnPost', msg);
 		main.postSM.feed('alloc', msg);
 		bump = false;
-		// delete only after a delay so all tabs notice that it's ours
-		setTimeout(posts.nonce.destroy.bind(null, msgNonce), 10000);
+
+		main.command('nonce:destroy', nonce);
 		// if we've already made a placeholder for this post, use it
-		if (main.postForm && main.postForm.el)
-			el = main.postForm.el;
+		let postForm = main.request('postForm');
+		if (postForm && postForm.el)
+			el = postForm.el;
 	}
 	// Add to my post set
 	if (myNonce) {
@@ -44,12 +45,14 @@ dispatcher[common.INSERT_POST] = function(msg) {
 		state.mine.write(msg.num, state.mine.now());
 	}
 
+	// Create model
+	let model = new posts.models[isThread ? 'Thread' : 'Post'](msg);
 	new posts[isThread ? 'Section' : 'Article']({
-		// Create model
-		model: new posts.models[isThread ? 'Thread' : 'Post'](msg),
+		model: model,
 		id: msg.num,
 		el: el
 	});
+	main.command('post:inserted', model);
 
 	if (isThread)
 		return;
@@ -75,12 +78,13 @@ dispatcher[common.MOVE_THREAD] = function(msg) {
 };
 
 dispatcher[common.INSERT_IMAGE] = function(msg) {
-	var model = state.posts.get(msg[0]);
+	let model = state.posts.get(msg[0]);
 	// Did I just upload this?
-	if (main.postModel && main.postModel.get('num') == msg[0]) {
+	let postModel = main.request('postModel');
+	if (postModel && postModel.get('num') == msg[0]) {
 		if (model)
 			model.set('image', msg[1], {silent: true});
-		main.postForm.insertUploaded(msg[1]);
+		main.request('postForm').insertUploaded(msg[1]);
 	}
 	else if (model)
 		model.set('image', msg[1]);
@@ -129,13 +133,6 @@ main.$doc.on('click', 'del', function (event) {
 	}
 });
 
-// For mobile
-function touchable_spoiler_tag(del) {
-	del.html = '<del onclick="void(0)">';
-}
-exports.touchable_spoiler_tag = touchable_spoiler_tag
-main.oneeSama.hook('spoilerTag', touchable_spoiler_tag);
-
 dispatcher[common.FINISH_POST] = function(msg) {
 	const num = msg[0];
 	delete state.ownPosts[num];
@@ -158,9 +155,10 @@ dispatcher[common.DELETE_THREAD] = function(msg, op) {
 	delete state.syncs[op];
 	delete state.ownPosts[op];
 
-	if (main.postModel) {
-		const num = main.postModel.get('num');
-		if ((main.postModel.get('op') || num) === op)
+	let postModel = main.request('postModel');
+	if (postModel) {
+		const num = postModel.get('num');
+		if ((postModel.get('op') || num) === op)
 			main.postSM.feed('done');
 		if (num === op)
 			return;
@@ -210,7 +208,7 @@ dispatcher[common.ONLINE_COUNT] = function(msg){
 dispatcher[common.HOT_INJECTION] = function(msg){
 	// Request new varibles, if hashes don't match
 	if (msg[0] == false && msg[1] != state.configHash)
-		main.send([common.HOT_INJECTION, true]);
+		main.command('send', [common.HOT_INJECTION, true]);
 	// Update variables and hash
 	else if (msg[0] == true) {
 		state.configHash = msg[1];

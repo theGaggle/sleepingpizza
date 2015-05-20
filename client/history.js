@@ -6,9 +6,7 @@ var $ = require('jquery'),
 	_ = require('underscore'),
 	common = require('../common'),
 	Extract = require('./extract'),
-	imager = require('./posts/imager'),
 	main = require('./main'),
-	scroll = require('./scroll'),
 	state = require('./state');
 
 // Click handler for post/thread/board links
@@ -54,14 +52,16 @@ function readingSteiner(url, event, needPush) {
 		});
 		// Prevent old threads from syncing
 		state.syncs = {};
-		// Set new page state
-		state.page.set(nextState);
-		imager.massExpander.unset('expand');
 		// Apply new DOM and load models
 		main.$threads.html(data);
+		// Set new page state
+		state.page.set(nextState);
+		// Reconfigure rendering singleton
+		main.oneeSama.full = main.oneeSama.op = nextState.thread;
+		main.command('massExpander:unset');
 		new Extract();
 		// Swap the database controller server-side
-		main.send([
+		main.command('send', [
 			common.RESYNC,
 			state.page.get('board'),
 			state.syncs,
@@ -74,7 +74,7 @@ function readingSteiner(url, event, needPush) {
 			if (!location.hash)
 				window.scrollTo(0, 0);
 			else
-				scroll.aboveBanner();
+				main.command('scroll:aboveBanner');
 		}
 		$loading.hide();
 	});
@@ -83,5 +83,5 @@ function readingSteiner(url, event, needPush) {
 // For back and forward history events
 window.onpopstate = function(event) {
 	readingSteiner(event.target.location.href);
-	scroll.aboveBanner();
+	main.command('scroll:aboveBanner');
 };

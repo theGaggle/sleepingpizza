@@ -5,15 +5,18 @@
 
 var $ = require('jquery'),
 	_ = require('underscore'),
-	common = require('../common/index'),
 	main = require('./main'),
-	state = require('./state'),
-        scroll = require('./scroll');
+	common = main.common,
+	state = main.state;
 
-var connSM = main.connSM, socket, attempts, attemptTimer;
+let SockJS = window.SockJS,
+	connSM = main.connSM,
+	socket, attempts, attemptTimer;
 const config = main.config;
 
-main.send = function (msg) {
+main.comply('send', send);
+
+function send(msg) {
 	// need deferral or reporting on these lost messages...
 	if (connSM.state != 'synced' && connSM.state != 'syncing')
 		return;
@@ -27,29 +30,30 @@ main.send = function (msg) {
 	if (config.DEBUG)
 		console.log('<', msg);
 	socket.send(msg);
-};
+}
 
 function on_message(e) {
 	if (config.DEBUG)
 		console.log('>', e.data);
-	let data = JSON.parse(e.data);
-        scroll.followLock(function(){
-            for (let i = 0, lim = data.length; i < lim; i++) {
-                    let msg = data[i];
-                    // TEMP: Log yet unsupported websocket calls
-                    if (!main.dispatcher[msg[1]])
-                            return console.error('Unsuported websocket call: ', msg);
-                    const op = msg.shift(),
-                            type = msg.shift();
-                    if (common.is_pubsub(type) && op in state.syncs)
-                            state.syncs[op]++;
-                    main.dispatcher[type](msg, op);
-            }
-        });
+	main.command('scroll:follow', function() {
+		let data = JSON.parse(e.data);
+		for (let i = 0, lim = data.length; i < lim; i++) {
+			let msg = data[i];
+			// TEMP: Log yet unsupported websocket calls
+			if (!main.dispatcher[msg[1]])
+				return console.error('Unsuported websocket call: ', msg);
+			const op = msg.shift(),
+				type = msg.shift();
+			if (common.is_pubsub(type) && op in state.syncs)
+				state.syncs[op]++;
+			main.dispatcher[type](msg, op);
+		}
+	});
 }
 
+let $sync = $('#sync');
 function sync_status(msg) {
-	$('#sync').text(msg);
+	$sync.text(msg);
 }
 
 connSM.act('load + start -> conn', function () {
@@ -98,7 +102,7 @@ connSM.act('conn, reconn + open -> syncing', function () {
 	const connID = common.random_id();
 	var page = state.page;
 	page.set('connID', connID);
-	main.send([
+	send([
 		common.SYNCHRONIZE,
 		connID,
 		page.get('board'),

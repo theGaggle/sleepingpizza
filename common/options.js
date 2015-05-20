@@ -161,7 +161,7 @@ var opts = [
 		exec: function(toggle) {
 			if (toggle)
 				// Query the server for current stream info
-				main.send([index.RADIO]);
+				main.command('send', [index.RADIO]);
 			else
 				main.command('clearRadioBanner');
 		}
@@ -206,7 +206,7 @@ var illyaDance = {
 		var muted = ' ';
 		if (options.get('illyaMuteToggle'))
 			muted = 'muted';
-		const mediaURL = config.MEADIA_URL;
+		const mediaURL = config.MEDIA_URL;
 		var dancer = '<video autoplay ' + muted + ' loop id="bgvid" >' +
 			'<source src="' + mediaURL + 'illya.webm" type="video/webm">' +
 			'<source src="' + mediaURL + 'illya.mp4" type="video/mp4">' +
