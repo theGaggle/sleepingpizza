@@ -93,7 +93,7 @@ let oneeSama = main.oneeSama = new common.OneeSama(function(num) {
 		frag = '>>' + num;
 	this.callback(frag);
 });
-oneeSama.full = oneeSama.op = state.page.get('thread');
+oneeSama.op = state.page.get('thread');
 main.options = require('./options');
 
 // Cached jQuery objects
@@ -106,6 +106,7 @@ main.connSM = new common.FSM('load');
 main.postSM = new common.FSM('none');
 state.page.set('tabID', common.random_id());
 
+main.memory = require('./memory');
 main.etc = require('./etc');
 main.time = require('./time');
 main.scroll = require('./scroll');
@@ -117,14 +118,17 @@ new Extract();
 
 main.posts = require('./posts');
 main.banner = require('./banner');
-main.background = require('./options/background');
+main.report = require('./report');
 
 // Start the client
 main.client = require('./client');
 
 // Load auxilary modules
+main.background = require('./options/background');
 main.history = require('./history');
 main.hover = require('./hover');
 main.drop = require('./drop');
+main.mobile = require('./mobile');
+main.hide = require('./hide');
 
 main.start();

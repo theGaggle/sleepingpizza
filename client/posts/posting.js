@@ -50,7 +50,7 @@ postSM.act('* + desync -> none', function() {
 		postForm.$input.val('');
 		postForm.finish();
 	}
-	main.$threads.find('aside').hide();
+	main.$threads.find('aside.posting').hide();
 });
 
 postSM.act('none + sync, draft, alloc + done -> ready', function() {
@@ -60,7 +60,7 @@ postSM.act('none + sync, draft, alloc + done -> ready', function() {
 		postForm.remove();
 		postForm = postModel = null;
 	}
-	main.$threads.find('aside').show();
+	main.$threads.find('aside.posting').show();
 });
 
 // Make new postform
@@ -102,7 +102,7 @@ main.dispatcher[common.IMAGE_STATUS] = function(msg) {
 		postForm.dispatch(msg[0]);
 };
 
-main.$doc.on('click', 'aside a', function() {
+main.$doc.on('click', 'aside.posting a', function() {
 	main.command('scroll:follow', () =>
 		postSM.feed('new', $(this).parent())
 	);
@@ -118,8 +118,8 @@ function handle_shortcut(event) {
 		opts = options.attributes;
 	switch(event.which) {
 		case opts.new:
-			var $aside = state.page.get('thread') ? main.$threads.find('aside')
-				: $ceiling().next();
+			var $aside = state.page.get('thread')
+				? main.$threads.find('aside.posting') : $ceiling().next();
 			if ($aside.is('aside') && $aside.length === 1) {
 				main.command('scroll:follow', function() {
 					postSM.feed('new', $aside);
@@ -220,13 +220,15 @@ var ComposerView = Backbone.View.extend({
 				this.callback(common.safe(`<a class="nope">&gt;&gt;${num}</a>`));
 		});
 		// Initialise the renderer instance
-		imouto.callback = inject;
-		imouto.op = state.page.get('thread');
-		imouto.state = [common.S_BOL, 0];
-		// TODO: Convert current OneeSama.state array to more flexible object
-		imouto.state2 = {spoiler: 0};
-		imouto.$buffer = this.$buffer;
-		imouto.eLinkify = main.oneeSama.eLinkify;
+		_.extend(imouto, {
+			callback: inject,
+			op: state.page.get('thread'),
+			state: [common.S_BOL, 0],
+			// TODO: Convert current OneeSama.state array to more flexible object
+			state2: {spoiler: 0},
+			$buffer: this.$buffer,
+			eLinkify: main.oneeSama.eLinkify
+		});
 		imouto.hook('spoilerTag', etc.touchable_spoiler_tag);
 		main.oneeSama.trigger('imouto', imouto);
 	},
@@ -294,7 +296,7 @@ var ComposerView = Backbone.View.extend({
 			this.$input.focus();
 		}
 
-		main.$threads.find('aside').hide();
+		main.$threads.find('aside.posting').hide();
 		preloadPanes();
 	},
 
@@ -418,7 +420,7 @@ var ComposerView = Backbone.View.extend({
 				.val(extra[k])
 				.appendTo(this.$uploadForm);
 		}
-		this.$uploadForm.prop('action', imageUploadURL());
+		this.$uploadForm.prop('action', etc.uploadURL());
 		this.$uploadForm.submit();
 		this.$iframe.load(function() {
 			if (!postForm)
@@ -910,15 +912,12 @@ function preloadPanes() {
 	});
 }
 
-function imageUploadURL() {
-	return (main.config.UPLOAD_URL || '../upload/')
-		+ '?id=' + state.page.get('connID');
-}
-main.reply('imageUploadURL', imageUploadURL);
-
 main.comply('openPostBox', function(num) {
 	let $a = main.$threads.find('#' + num);
-	postSM.feed('new', $a[$a.is('section') ? 'children' : 'siblings']('aside'));
+	postSM.feed(
+		'new',
+		$a[$a.is('section') ? 'children' : 'siblings']('aside.posting')
+	);
 });
 
 window.addEventListener('message', function(event) {

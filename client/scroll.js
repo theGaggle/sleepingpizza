@@ -2,7 +2,7 @@
  * Various page scrolling logic
  */
 
-var $ = require('jquery'),
+let $ = require('jquery'),
     Backbone = require('backbone'),
     main = require('./main'),
     state = main.state;
@@ -10,50 +10,33 @@ var $ = require('jquery'),
 const PAGE_BOTTOM = -1;
 
 let nestLevel = 0,
-	lockTarget, lockKeyHeight, $lockTarget, $lockIndicator, lockedManually;
+	lockTarget, lockKeyHeight, $lockIndicator;
 
 // Checks if we're at the bottom of page at the moment    
-var at_bottom = function() {
+let at_bottom = function() {
 	return window.scrollY + window.innerHeight >= main.$doc.height() - 5;
 };
 if (window.scrollMaxY !== undefined) {
-	at_bottom = function () {
+	at_bottom = function() {
 		return window.scrollMaxY <= window.scrollY;
 	};
 }
 
 // Sets the scroll lock position (to a post or to bottom of window)
-function set_lock_target(num, manually) {
-	lockedManually = manually;
+function set_lock_target(num) {
 	if (!num && at_bottom())
 		num = PAGE_BOTTOM;
 	if (num == lockTarget)
 		return;
 	lockTarget = num;
-	var bottom = lockTarget == PAGE_BOTTOM;
-	if ($lockTarget)
-		$lockTarget.removeClass('scroll-lock');
-	if (num && !bottom && manually)
-		$lockTarget = $('#' + num).addClass('scroll-lock');
-	else
-		$lockTarget = null;
 
-	var $ind = $lockIndicator;
-	if ($ind) {
-		var visible = bottom || manually;
-		$ind.css({
-			visibility: visible ? 'visible' : 'hidden'
-		});
-		if (bottom)
-			$ind.text('Locked to bottom');
-		else if (num) {
-			$ind.empty().append($('<a/>', {
-				text: '>>' + num,
-				href: '#' + num
-			}));
-		}
+	if ($lockIndicator.length) {
+		$lockIndicator.css('visibility',
+			(lockTarget == PAGE_BOTTOM) ? 'visible' : 'hidden'
+		);
 	}
 }
+main.comply('scroll:focus', num => set_lock_target(num));
 
 /* 
  * Logic for locking position to bottom of thread
@@ -62,38 +45,37 @@ function set_lock_target(num, manually) {
  * Use for every action that would change length of a thread.
  */
 function followLock(func) {
-	var lockHeight, locked = lockTarget, $post;
-	if (locked == PAGE_BOTTOM)
+	var lockHeight,
+		locked = lockTarget,
+		$post;
+	if (locked === PAGE_BOTTOM)
 		lockHeight = main.$doc.height();
 	else if (locked) {
 		$post = $('#' + locked);
-		var r = $post.length && $post[0].getBoundingClientRect();
+		const r = $post.length && $post[0].getBoundingClientRect();
 		if (r && r.bottom > 0 && r.top < window.innerHeight)
 			lockHeight = r.top;
 		else
 			locked = false;
 	}
 
-	var ret;
+	let ret;
 	try {
 		nestLevel++;
 		ret = func.call(this);
 	}
-	finally {
-		if (!--nestLevel)
-			Backbone.trigger('flushDomUpdates');
-//  This won't work since we don't have this in yet.
-//  And I don't know why it's important so I'll get it in later
-//  Quality quality control at its finest s(' ^)b
-	}
+	catch (e) {}
 
-	if (locked == PAGE_BOTTOM) {
-		var height = main.$doc.height();
+    //If we aren't in a thread, don't lock to bottom
+    if (!state.page.get('thread'))
+        return;
+	if (locked === PAGE_BOTTOM) {
+		const height = main.$doc.height();
 		if (height > lockHeight - 10)
 			window.scrollBy(0, height - lockHeight + 10);
 	}
-	else if (locked && lockTarget == locked) {
-		var newY = $post[0].getBoundingClientRect().top;
+	else if (locked && lockTarget === locked) {
+		const newY = $post[0].getBoundingClientRect().top;
 		window.scrollBy(0, newY - lockHeight);
 	}
 
@@ -101,27 +83,14 @@ function followLock(func) {
 }
 main.comply('scroll:follow', followLock);
 
-/* Uncomment when certain of menuHandler things being functional
- * Locks to post
-menuHandlers.Focus = function (model) {
-	var num = model && model.id;
-	set_lock_target(num, true);
-};
-	//Unlocks from post or bottom
-menuHandlers.Unfocus = function () {
-	set_lock_target(null);
-};
-*/
-
 //Check if user scrolled to the bottom every time they scroll
 function scroll_shita() {
-	if (state.page.get('thread') && (!lockTarget || lockTarget == PAGE_BOTTOM))
+	if (state.page.get('thread'))
 		set_lock_target(null);
 }
 
 function find_lock() {
-	let $ind = main.$threads.children('#lock');
-	$lockIndicator = $ind.length ? $ind : null;
+	$lockIndicator = main.$threads.children('#lock');
 }
 
 find_lock();
@@ -133,9 +102,9 @@ state.page.on('change', function() {
 	scroll_shita();
 });
 
-// If a post is a locked target and becomes hidden, unlock from post.
-Backbone.on('hide', function (model) {
-	if (model && model.id == lockTarget)
+// If a post is a locked target and is removed, unlock from post
+state.posts.on('remove', function(model) {
+	if (model.get('num') == lockTarget)
 		set_lock_target(null);
 });
 

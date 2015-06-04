@@ -83,12 +83,6 @@ var OptionModel = Backbone.Model.extend({
 	}
 });
 
-// Create and option model for each object in the array
-const optCommon = require('../../common/options');
-for (let i = 0, lim = optCommon.length; i < lim; i++) {
-	new OptionModel(optCommon[i]);
-}
-
 // Highlight options button, if no options are set
 (function() {
 	if (localStorage.getItem('options'))
@@ -118,8 +112,8 @@ for (let i = 0, lim = optCommon.length; i < lim; i++) {
 var OptionsView = Backbone.View.extend({
 	initialize: function() {
 		// Set the options in the panel to their appropriate values
-		optionsCollection.each(function(model) {
-			var $el = this.$el.find('#' + model.get('id'));
+		optionsCollection.each(model => {
+			let $el = this.$el.find('#' + model.get('id'));
 			/*
 			 * No corresponding element in panel. Can be caused by config
 			 * mismatches.
@@ -135,14 +129,17 @@ var OptionsView = Backbone.View.extend({
 			else if (type == 'shortcut')
 				$el.val(String.fromCharCode(val).toUpperCase());
 			// 'image' type simply falls through, as those don't need to be set
-		}, this);
+		});
+		this.$hidden = this.$el.find('#hidden');
+		main.comply('hide:render', this.renderHidden, this);
 	},
 
 	events: {
 		'click .option_tab_sel>li>a': 'switchTab',
 		'change': 'applyChange',
 		'click #export': 'export',
-		'click #import': 'import'
+		'click #import': 'import',
+		'click #hidden': 'clearHidden'
 	},
 
 	switchTab: function(event) {
@@ -172,8 +169,7 @@ var OptionsView = Backbone.View.extend({
 			val = parseInt($target.val());
 		// Not recorded; extracted directly by the background handler
 		else if (type == 'image')
-			// FIXME
-			return; //main.request('genTransparent', val);
+			return main.command('background:store', event.target);
 		else if (type == 'shortcut')
 			val = $target.val().toUpperCase().charCodeAt(0);
 		else
@@ -225,10 +221,27 @@ var OptionsView = Backbone.View.extend({
 				location.reload();
 			};
 		});
+	},
+
+	// Hiden posts counter and reset link
+	renderHidden: function(count) {
+		let $el = this.$hidden;
+		$el.text($el.text().replace(/\d+$/, count));
+	},
+
+	clearHidden: function() {
+		main.command('hide:clear');
+		this.renderHidden(0);
 	}
 });
 
 main.defer(function() {
+	// Create and option model for each object in the array
+	const optCommon = require('../../common/options');
+	for (let i = 0, lim = optCommon.length; i < lim; i++) {
+		new OptionModel(optCommon[i]);
+	}
+
 	new OptionsView({
 		el: document.getElementById('options-panel')
 	});

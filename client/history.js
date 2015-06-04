@@ -14,6 +14,12 @@ main.$doc.on ('click', 'a.history', function(event) {
 	readingSteiner(this.href, event, true);
 });
 
+// Loading status GIF
+let $loading = $('#loadingImage');
+
+main.comply('loading:show', () => $loading.show());
+main.comply('loading:hide', () => $loading.hide());
+
 // Navigate to the URL
 function readingSteiner(url, event, needPush) {
 	const nextState = state.read(url);
@@ -36,7 +42,7 @@ function readingSteiner(url, event, needPush) {
 	 * CDN for HTML-only caching. This solution is already very fast on threads
 	 * that are not several thousand posts large.
 	 */
-	var $loading = $('#loadingImage').show();
+	$loading.show();
 	$.get(address, function(data) {
 		if (!data)
 			return alert('Fetch failed: ' + url);
@@ -57,15 +63,15 @@ function readingSteiner(url, event, needPush) {
 		// Set new page state
 		state.page.set(nextState);
 		// Reconfigure rendering singleton
-		main.oneeSama.full = main.oneeSama.op = nextState.thread;
+		main.oneeSama.op = nextState.thread;
 		main.command('massExpander:unset');
 		new Extract();
 		// Swap the database controller server-side
 		main.command('send', [
 			common.RESYNC,
-			state.page.get('board'),
+			nextState.board,
 			state.syncs,
-			state.page.get('live')
+			nextState.live
 		]);
 
 		if (needPush){

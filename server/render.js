@@ -8,276 +8,295 @@ var caps = require('./caps'),
 	config = require('../config'),
 	db = require('../db'),
 	lang = require('../lang/'),
-	STATE = require('./state'),
-	web = require('./web');
+	STATE = require('./state');
 
-var RES = STATE.resources;
-var escape = common.escape_html;
+let RES = STATE.resources,
+	actionLink = common.action_link_html,
+	escape = common.escape_html,
+	parseHTML = common.parseHTML;
 
-function tamashii(num) {
-	var op = db.OPs[num];
-	if (op && caps.can_access_thread(this.ident, op))
-		this.callback(this.post_ref(num, op));
-	else
-		this.callback('>>' + num);
-}
-
-function write_thread_html (reader, req, out, cookies, opts) {
-	var oneeSama = new common.OneeSama(tamashii);
-	oneeSama.tz_offset = req.tz_offset;
-
-	opts.ident = req.ident;
-	caps.augment_oneesama(oneeSama, opts);
-
-	if (cookies.spoil == 'true')
-		oneeSama.spoilToggle = true;
-	if (cookies.agif == 'true')
-		oneeSama.autoGif = true;
-	if (cookies.rTime == 'true')
-		oneeSama.rTime = true;
-	if (cookies.linkify == 'true')
-		oneeSama.eLinkify = true;
-	if (common.thumbStyles.indexOf(cookies.thumb) >= 0)
-		oneeSama.thumbStyle = cookies.thumb;
-	const language = config.LANGS.indexOf(cookies.lang) > -1 ? cookies.lang
-		: config.DEFAULT_LANG;
-	oneeSama.lang = lang[language].common;
-	var lastN = cookies.lastn && parseInt(cookies.lastn, 10);
-	if (!lastN || !common.reasonable_last_n(lastN))
-		lastN = STATE.hot.THREAD_LAST_N;
-	oneeSama.lastN = lastN;
-
-	var hidden = {};
-	if (cookies.hide && !caps.can_moderate(req.ident)) {
-		cookies.hide.slice(0, 200).split(',').forEach(function (num) {
-			num = parseInt(num, 10);
-			if (num)
-				hidden[num] = null;
-		});
-	}
-
-	/*
-	 Build backbone model skeletons server-side, so there is less work to be done
-	 on the client.
-	 NOTE: We could use soemthing like rendr.js in the future.
-	 */
-	var posts = {};
-	const readOnly = config.READ_ONLY
+class Render {
+	constructor(yaku, req, resp, opts) {
+		this.resp =resp;
+		this.req = req;
+		this.parseRequest();
+		// Templates are generated one per language and cached
+		this.tmpl = RES['indexTmpl-' + this.lang];
+		this.readOnly = config.READ_ONLY
 			|| config.READ_ONLY_BOARDS.indexOf(opts.board) >= 0;
-	// Cache pagination, as not to render twice
-	var pag;
-	// Top and bottom borders of the <threads> tag
-	reader.once('top', function(nav) {
-		// Navigation info is used to build pagination. None on thread pages
-		if (!nav)
-			out.write(threadsTop(oneeSama));
-		else {
-			pag = pagination(nav, oneeSama);
-			out.write(pag);
+		opts.ident = req.ident;
+		this.opts = opts;
+		// Stores serialized post models for later stringification
+		this.posts = {};
+		this.initOneeSama().getHidden();
+
+		// Top and bottom borders of the page
+		yaku.once('top', this.onTop.bind(this));
+		yaku.once('bottom', this.onBottom.bind(this));
+
+		yaku.on('thread', this.onThread.bind(this));
+		// These are useless on catalog pages, as the events never fire
+		if (!opts.catalog) {
+			yaku.on('endthread', this.onThreadEnd.bind(this));
+			yaku.on('post', this.onPost.bind(this));
 		}
-		out.write('<hr>\n');
+	}
+	parseRequest() {
+		let req = this.req;
+		// Entire page, not just the contents of threads
+		this.full = req.query.minimal !== 'true';
+		this.lang = req.lang;
+	}
+	// Configure rendering singleton
+	initOneeSama() {
+		const ident = this.req.ident;
+		let oneeSama = new common.OneeSama(function(num) {
+
+			// Post link handler
+			const op = db.OPs[num];
+			if (op && caps.can_access_thread(ident, op))
+				this.callback(this.post_ref(num, op));
+			else
+				this.callback('>>' + num);
+		});
+		const cookies = this.req.cookies;
+		oneeSama.tz_offset = this.req.tz_offset;
+		// Add mnemonics for authenticated staff
+		caps.augment_oneesama(oneeSama, this.opts);
+
+		if (cookies.spoil === 'true')
+			oneeSama.spoilToggle = true;
+		if (cookies.agif === 'true')
+			oneeSama.autoGif = true;
+		if (cookies.rTime === 'true')
+			oneeSama.rTime = true;
+		if (cookies.linkify === 'true')
+			oneeSama.eLinkify = true;
+		if (common.thumbStyles.indexOf(cookies.thumb) >= 0)
+			oneeSama.thumbStyle = cookies.thumb;
+		oneeSama.lang = lang[this.lang].common;
+		let lastN = cookies.lastn && parseInt(cookies.lastn, 10);
+		if (!lastN || !common.reasonable_last_n(lastN))
+			lastN = STATE.hot.THREAD_LAST_N;
+		oneeSama.lastN = lastN;
+		this.oneeSama = oneeSama;
+		return this;
+	}
+	// Read hidden posts from cookie
+	getHidden() {
+		let hidden = new Set();
+		const hide = this.req.cookies.hide;
+		if (hide && !caps.can_moderate(this.req.ident)) {
+			const toHide = hide.slice(0, 200).split(',');
+			for (let i = 0, l = toHide.length; i < l; i++) {
+				const num = parseInt(toHide[i], 10);
+				if (num)
+					hidden.add(num);
+			}
+		}
+		this.hidden = hidden;
+	}
+	onTop(nav) {
+		let resp = this.resp;
+		const opts = this.opts;
+
+		// <head> and other prerendered static HTML
+		if (this.full)
+			resp.write(this.tmpl[0]);
+		if (opts.catalog)
+			this.boardTitle().catalogTop();
+		else if (opts.isThread)
+			this.threadTitle().threadTop();
+		else
+			this.boardTitle().pagination(nav);
+		resp.write('<hr>\n');
+
 		// Only render on 'live' board pages
-		if (nav && !readOnly && !/\/page\d+/.test(req.url))
-			out.write(oneeSama.newThreadBox());
-	});
-	reader.once('bottom', function() {
-		// Serialze post collection and add as inlined JSON
-		out.write(common.parseHTML
+		if (opts.live && !this.readOnly)
+			resp.write(this.oneeSama.newThreadBox());
+		if (opts.catalog)
+			resp.write('<div id="catalog">');
+	}
+	onBottom() {
+		let resp = this.resp;
+		const catalog = this.opts.catalog;
+		if (catalog)
+			resp.write('</div><hr>\n');
+		resp.write(this.pag || this.threadBottom());
+
+		/*
+		 Build backbone model skeletons server-side, so there is less work to be
+		 done on the client.
+		 NOTE: We could use something like rendr.js in the future.
+		 */
+		resp.write(parseHTML
 			`<script id="postData" type="application/json">
-				${JSON.stringify(posts)}
+				${JSON.stringify({
+					posts: this.posts,
+					title: this.title
+				})}
 			</script>`
 		);
-		out.write(pag || threadsBottom(oneeSama));
-	});
-
-	reader.on('thread', function (op_post, omit) {
-		if (op_post.num in hidden)
-			return;
-		op_post.omit = omit || 0;
-		// Currently only calculated client-side
-		op_post.image_omit = 0;
-		op_post.replies = [];
-		posts[op_post.num] = op_post;
-
-		const full = oneeSama.full = !!opts.fullPosts;
-		oneeSama.op = opts.fullLinks ? false : op_post.num;
-		var first = oneeSama.monomono(op_post, full && 'full');
-		first.pop();
-		out.write(first.join(''));
-
-		reader.once('endthread', function() {
-			if (!readOnly)
-				out.write(oneeSama.replyBox());
-			out.write('</section><hr>\n');
-		});
-	});
-
-	reader.on('post', function (post) {
-		if (post.num in hidden || post.op in hidden)
-			return;
-		posts[post.num] = post;
-		// Add to parent threads replies
-		posts[post.op].replies.push(post.num);
-		out.write(oneeSama.mono(post));
-	});
-}
-exports.write_thread_html = write_thread_html;
-
-// [live 0 1 2 3] [Catalog]
-function pagination(info, oneeSama) {
-	const live = oneeSama.lang.live,
-		cur = info.cur_page;
-	let bits = '<nav class="pagination act">';
-	if (cur >= 0)
-		bits += `<a href="." class="history">${live}</a>`;
-	else
-		bits += `<strong>${live}</strong>`;
-	let start = 0,
-		end = info.pages,
-		step = 1;
-	if (info.ascending) {
-		start = end - 1;
-		end = step = -1;
+		if (this.full)
+			this.pageEnd();
 	}
-	for (let i = start; i != end; i += step) {
-		if (i != cur)
-			bits += `<a href="page${i}" class="history">${i}</a>`;
+	onThread(post) {
+		if (this.hidden.has(post.num))
+			return;
+
+		// Regular threads and catalog have very different structure, se we
+		// split them into methods
+		if (this.opts.catalog)
+			this.catalogThread(post);
 		else
-			bits += `<strong>${i}</strong>`;
+			this.writeThread(post);
 	}
-	bits += `] [<a class="catalogLink">${oneeSama.lang.catalog}</a></nav>`;
-	return bits;
-}
+	catalogThread(data) {
+		let safe = common.safe,
+			html = [safe('<article>')],
+			oneeSama = this.oneeSama;
 
+		// Downscale thumbnail
+		let image = data.image;
+		image.dims[2] /= 1.66;
+		image.dims[3] /= 1.66;
 
-function threadsTop(oneeSama) {
-	return common.action_link_html('#bottom', oneeSama.lang.bottom)
-		+ '&nbsp;'
-		+ common.action_link_html(
-			'',
-			oneeSama.lang.expand_images,
-			'expandImages'
+		html.push(
+			safe(oneeSama.thumbnail(image, data.num)),
+			safe(parseHTML
+				`<br>
+				<small title="${lang[this.lang].catalog_omit}">
+					${data.replyctr}/${data.imgctr - 1}~
+				</small>
+				<small>
+					${oneeSama.expansion_links_html(data.num)}
+				</small>
+				<br>`
+			)
 		);
-}
+		if (data.subject)
+			html.push(safe('<h3>「'), data.subject, safe('」</h3>'));
+		html.push(oneeSama.karada(data.body), safe('</article>'));
+		this.resp.write(common.join(html));
+	}
+	writeThread(post) {
+		this.posts[post.num] = post;
 
-function threadsBottom(oneeSama) {
-	return common.action_link_html('.',	oneeSama.lang.return, 'bottom', 'history')
-		+ '&nbsp;'
-		+ common.action_link_html('#', oneeSama.lang.top)
-		+ common.parseHTML
-			`<span id="lock" style="visibility: hidden;">
-				${oneeSama.lang.locked_to_bottom}
-			</span>`;
-}
-
-function make_link_rels(board, bits) {
-	var path = config.MEDIA_URL + 'css/',
-		// Object of CSS versions
-		css = STATE.hot.css;
-
-	bits.push(['stylesheet', path + css['base.css']]);
-
-	var theme_css = css[STATE.hot.BOARD_CSS[board] + '.css'];
-	bits.push(['stylesheet', path + theme_css, 'theme']);
-
-	return bits.map(function (p) {
-		var html = '\t<link rel="'+p[0]+'" href="'+p[1]+'"';
-		if (p[2])
-			html += ' id="' + p[2] + '"';
-		return html + '>\n';
-	}).join('');
-}
-
-function write_board_head (out, board, nav, language) {
-	var indexTmpl = RES['indexTmpl-' + language];
-	var title = STATE.hot.TITLES[board] || escape(board);
-	var metaDesc = "Real-time imageboard";
-
-	var i = 0;
-	out.write(indexTmpl[i++]);
-	out.write(title);
-	out.write(indexTmpl[i++]);
-	out.write(escape(metaDesc));
-	out.write(indexTmpl[i++]);
-	out.write(make_board_meta(board, nav));
-	out.write(indexTmpl[i++]);
-	out.write(indexTmpl[i++]);
-	out.write(imageBanner());
-	out.write(title);
-	out.write(indexTmpl[i++]);
-}
-exports.write_board_head = write_board_head;
-
-function imageBanner() {
-	var b = config.BANNERS;
-	if (!b)
-		return '';
-	return `<img id="imgBanner" src="${config.MEDIA_URL}banners/`
-		+ b[Math.floor(Math.random() * b.length)] + '"><br>';
-}
-
-function write_board_title(out, board){
-	var title = STATE.hot.TITLES[board] || escape(board);
-	out.write(`<h1>${imageBanner()}${title}</h1>`);
-}
-exports.write_board_title = write_board_title;
-
-function write_thread_head (out, board, op, opts) {
-	const indexTmpl = RES['indexTmpl-' + opts.lang];
-	var title = '/'+escape(board)+'/';
-	if (opts.subject)
-		title += ' - ' + escape(opts.subject) + ' (#' + op + ')';
-	else
-		title += ' - #' + op;
-	var metaDesc = "Real-time imageboard thread";
-
-	var i = 0;
-	out.write(indexTmpl[i++]);
-	out.write(title);
-	out.write(indexTmpl[i++]);
-	out.write(escape(metaDesc));
-	out.write(indexTmpl[i++]);
-	out.write(make_thread_meta(board, op, opts.abbrev));
-	out.write(indexTmpl[i++]);
-	out.write(indexTmpl[i++]);
-	out.write(imageBanner());
-	out.write(title);
-	out.write(indexTmpl[i++]);
-}
-exports.write_thread_head = write_thread_head;
-
-function write_thread_title(out, board, op, opts){
-	var title = '/'+escape(board)+'/';
-	if (opts.subject)
-		title += ' - ' + escape(opts.subject) + ' (#' + op + ')';
-	else
-		title += ' - #' + op;
-	out.write(`<h1>${imageBanner()}${title}</h1>`);
-}
-exports.write_thread_title = write_thread_title;
-
-function make_board_meta(board, info) {
-	var bits = [];
-	if (info.cur_page >= 0)
-		bits.push(['index', '.']);
-	return make_link_rels(board, bits);
-}
-
-function make_thread_meta(board, num, abbrev) {
-	var bits = [['index', '.']];
-	if (abbrev)
-		bits.push(['canonical', num]);
-	return make_link_rels(board, bits);
-}
-
-function write_page_end (out, ident, language) {
-	const tmpl = 'indexTmpl-' + language;
-	out.write(RES[tmpl][RES[tmpl].length - 1]);
-	if (ident) {
-		if (caps.can_administrate(ident))
-			out.write('<script src="../admin.js"></script>\n');
-		else if (caps.can_moderate(ident))
-			out.write('<script src="../mod.js"></script>\n');
+		let oneeSama = this.oneeSama;
+		const opts = this.opts,
+			full = oneeSama.full = !!opts.fullPosts;
+		oneeSama.op = opts.fullLinks ? false : post.num;
+		let first = oneeSama.monomono(post, full && 'full');
+		first.pop();
+		this.resp.write(first.join(''));
+	}
+	onThreadEnd() {
+		let resp = this.resp;
+		if (!this.readOnly)
+			resp.write(this.oneeSama.replyBox());
+		resp.write('</section><hr>\n');
+	}
+	onPost(post) {
+		const hidden = this.hidden;
+		if (hidden.has(post.num) || hidden.has(post.op))
+			return;
+		let posts = this.posts;
+		posts[post.num] = post;
+		this.resp.write(this.oneeSama.mono(post));
+	}
+	threadTitle() {
+		let title = `/${escape(this.opts.board)}/ - `;
+		const subject = this.opts.subject,
+			op = this.opts.op;
+		if (subject)
+			title += `${escape(subject)} (#${op})`;
+		else
+			title += `#${op}`;
+		this.resp.write(`<h1>${this.imageBanner()}${title}</h1>`);
+		this.title = title;
+		return this;
+	}
+	boardTitle() {
+		const board = this.opts.board,
+			title = STATE.hot.TITLES[board] || escape(board);
+		this.resp.write(`<h1>${this.imageBanner()}${title}</h1>`);
+		this.title = title;
+		return this;
+	}
+	imageBanner() {
+		const banners = config.BANNERS;
+		if (!banners)
+			return '';
+		return parseHTML
+			`<img id="imgBanner"
+				src="${config.MEDIA_URL}banners/${common.random(banners)}"
+			>
+			<br>`;
+	}
+	catalogTop() {
+		const pag = this.oneeSama.asideLink('return', '.', 'compact', 'history');
+		this.resp.write(pag);
+		// Assign to this.pag, to make duplicating at bottom more uniform
+		this.pag = pag;
+	}
+	threadTop() {
+		let lang = this.oneeSama.lang;
+		this.resp.write(
+			actionLink('#bottom', lang.bottom)
+				+ '&nbsp;'
+				+ actionLink('', lang.expand_images, 'expandImages')
+		);
+	}
+	// [live 0 1 2 3] [Catalog]
+	pagination(nav) {
+		let oneeSama = this.oneeSama;
+		const live = oneeSama.lang.live,
+			cur = nav.cur_page;
+		let bits = '<nav class="pagination act">';
+		if (cur >= 0)
+			bits += `<a href="." class="history">${live}</a>`;
+		else
+			bits += `<strong>${live}</strong>`;
+		let start = 0,
+			end = nav.pages,
+			step = 1;
+		if (nav.ascending) {
+			start = end - 1;
+			end = step = -1;
+		}
+		for (let i = start; i != end; i += step) {
+			if (i != cur)
+				bits += `<a href="page${i}" class="history">${i}</a>`;
+			else
+				bits += `<strong>${i}</strong>`;
+		}
+		bits += parseHTML
+			`] [
+			<a class="history" href="catalog">
+				${oneeSama.lang.catalog}
+			</a>
+			</nav>`;
+		this.resp.write(bits);
+		this.pag = bits;
+	}
+	threadBottom() {
+		let lang = this.oneeSama.lang;
+		return actionLink('.', lang.return, 'bottom', 'history')
+			+ '&nbsp;'
+			+ actionLink('#', lang.top)
+			+ `<span id="lock">${lang.locked_to_bottom}</span>`;
+	}
+	// <script> tags
+	pageEnd() {
+		let resp = this.resp;
+		resp.write(this.tmpl[1]);
+		const ident = this.req.ident;
+		if (ident) {
+			if (caps.can_administrate(ident))
+				resp.write('<script src="../admin.js"></script>\n');
+			else if (caps.can_moderate(ident))
+				resp.write('<script src="../mod.js"></script>\n');
+		}
 	}
 }
-exports.write_page_end = write_page_end;
+module.exports = Render;

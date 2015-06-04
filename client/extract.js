@@ -2,45 +2,61 @@
  * Extact model data from the thread tree HTML and populate models and views
  */
 
-var $ = require('jquery'),
-	main = require('./main'),
+var main = require('./main'),
 	state = require('./state'),
 	posts = require('./posts');
 
-var Extract = module.exports = function() {
-	this.mine = state.mine.read_all();
-	this.json = JSON.parse(main.$threads.children('#postData').text());
-	var self = this;
-	main.$threads.children('section').each(function() {
-		self.extractThread($(this));
-	});
-};
+class Extract {
+	constructor() {
+		let el = main.$threads[0];
+		// Read serialised model data
+		let json = JSON.parse(document.getElementById('postData').innerHTML);
+		main.command('notify:title', json.title);
 
-Extract.prototype.extractThread = function($section) {
-	var self = this;
-	$section.children('article').each(function() {
-		new posts.Article({
-			model: new posts.models.Post(self.extractModel(this)),
-			el: this
-		});
-	});
-	// Extract the model of the OP
-	var model = this.extractModel($section[0]);
-	new posts.Section({
-		model: new posts.models.Thread(model),
-		el: $section[0]
-	});
-	/*
-	 * Read the sync ID of the thread. Used later for syncronising with the
-	 * server.
-	 */
-	state.syncs[model.num] = parseInt(model.hctr || 0, 10);
-};
+		// We don't need models on catalog pages
+		if (state.page.get('catalog'))
+			return;
 
-Extract.prototype.extractModel = function(el) {
-	var info = this.json[el.getAttribute('id')];
-	// Did I make this post?
-	if (this.mine[info.num])
-		info.mine = true;
-	return info;
-};
+		this.mine = state.mine.read_all();
+		this.posts = json.posts;
+		this.extractReplies(el);
+		this.extractThreads(el);
+	}
+	extractReplies(el) {
+		let articles = el.getElementsByTagName('article'),
+			Article = posts.Article,
+			Post = posts.models.Post;
+		for (let i = 0, l = articles.length; i < l; i++) {
+			let article = articles[i];
+			new Article({
+				model: new Post(this.extractModel(article)),
+				el: article
+			});
+		}
+	}
+	extractThreads(el) {
+		let sections = el.getElementsByTagName('section'),
+			Section = posts.Section,
+			Thread = posts.models.Thread,
+			syncs = state.syncs;
+		for (let i = 0, l = sections.length; i < l; i++) {
+			let section = sections[i];
+			const model = this.extractModel(section);
+			new Section({
+				model: new Thread(model),
+				el: section
+			});
+			// Read the sync ID of the thread. Used later for syncronising
+			// with the server.
+			syncs[model.num] = model.hctr;
+		}
+	}
+	extractModel(el) {
+		let info = this.posts[el.getAttribute('id')];
+		// Did I make this post?
+		if (info.num in this.mine)
+			info.mine = true;
+		return info;
+	}
+}
+module.exports = Extract;

@@ -44,7 +44,6 @@ var clientConfig = exports.clientConfig = _.pick(config,
 	'SOCKET_URL',
 	'DEBUG',
 	'READ_ONLY',
-	'API_URL',
 	'IP_TAGGING',
 	'RADIO',
 	'PYU',
@@ -172,9 +171,7 @@ function reloadCSS(hot, cb) {
 	getRevision('css', function(err, files) {
 		if (err)
 			return cb(err);
-		// Only the curfew template is statically assigned a CSS file. The rest
-		// are inserted per request in server/render.js
-		HOT.CURFEW_CSS = files['curfew.css'];
+		HOT.base_css = files['base.css'];
 		// Export to these modules and client
 		HOT.css = hot.css = files;
 		cb(null);
@@ -199,9 +196,6 @@ function read_templates(cb) {
 
 	async.parallel({
 		index: read('tmpl', 'index.html'),
-		login: read('tmpl', 'login.html'),
-		curfew: read('tmpl', 'curfew.html'),
-		suspension: read('tmpl', 'suspension.html'),
 		notFound: read('www', '404.html'),
 		serverError: read('www', '50x.html')
 	}, cb);
@@ -226,9 +220,6 @@ function expand_templates(res) {
 	}
 
 	var ex = {
-		curfewTmpl: tmpl(res.curfew).tmpl,
-		suspensionTmpl: tmpl(res.suspension).tmpl,
-		loginTmpl: tmpl(res.login).tmpl,
 		notFoundHtml: res.notFound,
 		serverErrorHtml: res.serverError
 	};
@@ -270,7 +261,7 @@ function build_schedule(schedule){
 			time = schedule[i + 2];
 		// Fill empty slots
 		if (!plans)
-			plans = filler[Math.floor(Math.random() * filler.length)];
+			plans = common.random(filler);
 		if (!time)
 			time = 'all day';
 		table += common.parseHTML
@@ -333,9 +324,9 @@ function buildOptions(lang) {
 		for (let i = 0, l = opts.length; i < l; i++) {
 			html += renderOption(opts[i], lang);
 		}
-		// Append Export and Import links to first tab
+		// Append hidden post reset, Export and Import links to first tab
 		if (i === 0)
-			html += renderExportImport(lang);
+			html += renderExtras(lang);
 		html += '</li>';
 	}
 	html += '</ul></div>';
@@ -386,11 +377,13 @@ function renderOption(opt, lang) {
 	return html;
 }
 
-function renderExportImport(lang) {
-	let html = '<br>';
-	const links = ['export', 'import'];
+function renderExtras(lang) {
+	let html = common.parseHTML
+		`<br>
+		`
+	const links = ['export', 'import', 'hidden'];
 	for (let i = 0, l = links.length; i < l; i++) {
-		let id = links[i],
+		const id = links[i],
 			ln = lang[id];
 		html += `<a id="${id}" title="${ln[1]}">${ln[0]}</a> `;
 	}

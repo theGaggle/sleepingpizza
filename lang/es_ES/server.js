@@ -2,6 +2,8 @@
  * Mapeo de opciones de idiomas configurables solamente para servidor
  */
 var lang = {
+	catalog_omit: 'Replies/Images',
+
 	// Respuestas de imager
 	im : {
 		bad_client: "ID de cliente mala.",
@@ -80,6 +82,10 @@ var lang = {
 		import: [
 			'Importar',
 			'Importar opciones desde archivo'
+		],
+		hidden: [
+			'Hidden: 0',
+			'Clear hidden posts'
 		],
 		lang: [
 			'Idioma',

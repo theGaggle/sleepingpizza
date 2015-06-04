@@ -7,12 +7,20 @@ a {
 }
 article, aside {
 	display: table;
-	margin: 2px;
 	padding: 4px 10px;
 }
-aside a {
-	position: relative;
-	z-index: 15;
+aside {
+	margin: 1em;
+	section > & {
+		margin: 2px;
+	}
+	&.compact {
+		margin: 0 1em;
+	}
+	a {
+		position: relative;
+		z-index: 15;
+	}
 }
 a, aside, .bfloat {
 	cursor: pointer;
@@ -21,6 +29,7 @@ a, aside, .bfloat {
 	cursor: auto;
 }
 article {
+	margin: 2px;
 	figure img {
 		margin-bottom: 0;
 	}
@@ -46,9 +55,6 @@ small {
 }
 section > small {
   padding-bottom: 0.5em;
-}
-threads > aside {
-	margin: 1em;
 }
 a.disabled {
   pointer-events: none;
@@ -202,12 +208,10 @@ span.control .popup-menu {
 	position: absolute;
 	margin: 0;
 	padding: 5px;
-	top: -9px;
-	left: -9px;
 	li {
 		list-style: none;
 		margin: 0;
-		padding: 3px 3px 3px 21px;
+		padding: 3px 3px 3px 5px;
 	}
 }
 .popup-menu, .act {
@@ -284,15 +288,23 @@ span.control .popup-menu {
 	max-height: 80%;
 	max-width: 80%;
 }
-#catalog > article {
-	width: 165px;
-	max-height: 320px;
-	display: inline-block;
-	text-align: center;
-	word-wrap:break-word;
-	overflow: hidden;
-	vertical-align: top;
-	padding: 0.6em 0.6em 0.6em 0.6em;
+#catalog {
+	margin: 0 0.85em;
+	article {
+		width: 165px;
+		max-height: 320px;
+		display: inline-block;
+		text-align: center;
+		word-wrap:break-word;
+		overflow: hidden;
+		vertical-align: top;
+		padding: 0.6em;
+		margin: 0.15em;
+		small {
+			clear: none;
+			display: inline-block;
+		}
+	}
 }
 .option_tab_sel {
 	display: inline;
@@ -317,6 +329,7 @@ span.control .popup-menu {
 		display: none;
 		float: left;
 		padding-top: 5px;
+		width: 100%;
 		label {
 			padding-left: 0.2em;
 		}
@@ -324,6 +337,9 @@ span.control .popup-menu {
 			display: inline-block;
 		}
 	}
+}
+#hidden {
+	float: right;
 }
 // Proper fixed element rendering with dynamic animated backgrounds
 #banner, .bmodal, .modal {
@@ -357,29 +373,22 @@ span.control .popup-menu {
 }
 #UTCClock {
 	text-align: center;
+	cursor: pointer;
 	b {
 		display: block;
 	}
 }
-#bgvid{
-	position: fixed;
-	right: 0;
-	top: 0;
-	width: 100%;
-	height: auto;
-	z-index: -100;
-}
 #user_bg {
 	position: fixed;
-	top: -100%;
+	top: 0;
 	left: 0;
-	right: 0;
-	bottom: -100%;
 	width: 100%;
-	height: auto;
+	height: 100%;
 	z-index: -100;
-	overflow: hidden;
-	margin: auto;
+	video {
+		height: auto;
+		width: 100%;
+	}
 }
 .email {
 	text-decoration: underline !important;
@@ -558,7 +567,7 @@ pre, .themed {
 }
 
 @media screen and (max-device-width: 700px) and (orientation: portrait) {
-	section > blockquote, section > header, section > #banner, section > .omit {
+	section > blockquote, section > header, section > .omit {
 		margin-left: 0.5em;
 		margin-right: 0.5em;
 	}

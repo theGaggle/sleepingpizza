@@ -10,6 +10,7 @@ var imports = require('./imports'),
 
 const config = imports.config,
 	flatten = util.flatten,
+	join = util.join,
 	new_tab_link = util.new_tab_link,
 	pad = util.pad,
 	parseHTML = util.parseHTML,
@@ -320,9 +321,9 @@ const searchBase = (function() {
 OS.imageSearch = function(data) {
 	let html = '';
 	const base = searchBase,
-		type = data.thumb ? 'thumb' : 'src',
-		imageURl =  this.imagePaths()[type].replace(/^https/, 'http')
-			+ data[type];
+		// Only use HTTP for thumbnail image search, because IQDB and
+		// Saucenao can't into certain SSL cyphers
+		imageURl = this.thumbPath(data).replace(/^https/, 'http');
 	for (let i = 0, l = base.length; i < l; i++) {
 		let parts = base[i];
 		html += parts[0]
@@ -334,6 +335,17 @@ OS.imageSearch = function(data) {
 	}
 
 	return html;
+};
+
+// Get thumbnail path, even if no thumbnail generated
+OS.thumbPath = function(data, mid) {
+	let type = 'thumb';
+	if (mid && data.mid)
+		type = 'mid';
+	else if (!data.thumb)
+		type = 'src';
+
+	return this.imagePaths()[type] + data[type];
 };
 
 OS.imageLink = function(data) {
@@ -381,7 +393,7 @@ OS.imagePaths = function() {
 	return this._imgPaths;
 };
 
-OS.thumbnail = function(data) {
+OS.thumbnail = function(data, href) {
 	const paths = this.imagePaths(),
 		dims = data.dims;
 	let src, thumb,
@@ -407,23 +419,25 @@ OS.thumbnail = function(data) {
 	// Animated GIF thumbnails
 	else if (data.ext === '.gif' && this.autoGif)
 		thumb = src;
-	else if (this.thumbStyle === 'sharp' && data.mid)
-		thumb = paths.mid + data.mid;
-	else if (data.thumb)
-		thumb = paths.thumb + data.thumb;
+	else
+		thumb = this.thumbPath(data, this.thumbStyle === 'sharp');
 
 	// Source image smaller than thumbnail, archive and other fallbacks
 	if (!thumbWidth) {
 		thumbWidth = width;
 		thumbHeight = height;
 	}
-	if (!thumb)
-		thumb = src;
 
+	// Thumbnails on catalog pages do not need hover previews. Adding the
+	// `expanded` class excludes them from the hover handler.
 	return parseHTML
 		`${config.IMAGE_HATS && '<span class="hat"></span>'}
-		<a target="blank" rel="nofollow" href="${src}">
-			<img src="${thumb}" width="${thumbWidth} height=${thumbHeight}">
+		<a target="blank" rel="nofollow" href="${href || src}">
+			<img src="${thumb}"
+				width="${thumbWidth}
+				height=${thumbHeight}"
+				${href && 'class="expanded"'}
+			>
 		</a>`
 };
 
@@ -508,11 +522,10 @@ OS.atama = function(data) {
 	}
 	header.push(' ', safe(this.time(data.time)), ' ', this.post_nav(data));
 	if (!this.full && !data.op) {
-		var ex = this.expansion_links_html(data.num);
-		header.push(safe(ex));
+		header.push(safe(this.expansion_links_html(data.num)));
 	}
 	this.trigger('headerFinish', {header: header, data: data});
-	header.unshift(safe('<header>'));
+	header.unshift(safe('<header><span class=control></span>'));
 	header.push(safe('</header>\n\t'));
 	return header;
 };
@@ -607,7 +620,7 @@ OS.mono = function(data) {
 		c = safe('</article>\n'),
 		gen = this.monogatari(data);
 
-	return flatten([o, gen.header, gen.image || '', gen.body, c]).join('');
+	return join([o, gen.header, gen.image || '', gen.body, c]);
 };
 
 OS.monomono = function(data, cls) {
@@ -620,10 +633,22 @@ OS.monomono = function(data, cls) {
 	return flatten([o, gen.image || '', gen.header, gen.body, '\n', c]);
 };
 
+OS.asideLink = function(inner, href, cls, innerCls) {
+	return parseHTML
+		`<aside class="act ${cls}">
+			<a~
+				${href && `href="${href}"`}
+				${innerCls && ` class="${innerCls}"`}
+			>
+				${this.lang[inner] || inner}
+			</a>
+		</aside>`
+};
+
 OS.replyBox = function() {
-	return `<aside class="act"><a>${this.lang.reply}</a></aside>`;
+	return this.asideLink('reply', null, 'posting');
 };
 
 OS.newThreadBox = function() {
-	return `<aside class="act"><a>${this.lang.newThread}</a></aside>`;
+	return this.asideLink('newThread', null, 'posting');
 };

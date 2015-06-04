@@ -236,7 +236,7 @@ exports.parse_dice = parse_dice;
 
 function serverTime() {
 	const d = Date.now();
-	return imports.isNode ? d : d + imports.main.request('serverTimeOffset');
+	return imports.isNode ? d : d + imports.main.request('time:offset');
 }
 exports.serverTime = serverTime;
 
@@ -322,10 +322,15 @@ exports.pad = pad;
 
 // Various UI-related links wrapped in []
 function action_link_html(href, name, id, cls) {
-	return '<span class="act"><a href="' + href + '"'
-		+ (id ? ' id="' + id + '"' : '')
-		+ (cls ? ' class="' + cls + '"' : '')
-		+ '>' + name + '</a></span>';
+	return parseHTML
+		`<span class="act">
+			<a href="${href}"
+				${id && ` id="${id}"`}
+				${cls && ` class="${cls}"`}
+			>
+				${name}
+			</a>
+		</span>`;
 }
 exports.action_link_html = action_link_html;
 
@@ -360,11 +365,15 @@ function random_id() {
 }
 exports.random_id = random_id;
 
+function random(array) {
+	return array[Math.floor(Math.random() * array.length)];
+}
+exports.random = random;
+
 /*
  Template string tag function for HTML. Strips indentation and trailing
  newlines. Based on https://gist.github.com/zenparsing/5dffde82d9acef19e43c
  */
-
 function parseHTML(callSite) {
 	// if argumennts.length === 1
 	if (typeof callSite === 'string')

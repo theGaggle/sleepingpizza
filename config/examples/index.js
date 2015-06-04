@@ -4,13 +4,6 @@ module.exports = {
 	LISTEN_HOST: null,
 // Debuging mode. Do not use in production
 	DEBUG: true,
-// API webserver listening port
-	API_PORT: 8002,
-/*
- URL on which the API is hosted. This does not change anything serverside,
- but simply points the client to where nginx or similar is proxying the API to
- */
-	API_URL: '../api/',
 // Secure tripcode encryption salt
 	SECURE_SALT: "LALALALALALALALA", /* [A-Za-z0-9./]{16} */
 // Relative path to serve websocket connections
@@ -29,7 +22,7 @@ module.exports = {
  */
 	SERVE_STATIC_FILES: true,
 	SERVE_IMAGES: true,
-// Not preferred; use nginx (or other)'s gzipping
+// Not preferred; use nginx (or other's) gzipping
 	GZIP: true,
 /*
  Enable usage of the websocket protocol (otherwise only emulation). Disabling

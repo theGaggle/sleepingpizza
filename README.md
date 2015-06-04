@@ -13,7 +13,7 @@ stable revisions, please [download the latest release](https://github.com/bakape
 * Run `node builder.js` to run an auto-reloading development server
 
 ##Automatic cross-platform development setup:
-* Install [VirtualBox](https://www.virtualbox.org/wiki/Downloads) and
+* Install [git](https://git-scm.com/), [VirtualBox](https://www.virtualbox.org/wiki/Downloads) and
 [Vagrant](http://www.vagrantup.com/downloads.html)
 * Open a shell in meguca's root directory and run `vagrant up`
 * Grab a coffee
@@ -25,7 +25,6 @@ will automatically sync both ways. [More info](https://www.vagrantup.com/)
   * Some features will not work without a dedicated webserver. It is highly 
   recommended not to use the the default inbuilt webserver in production.
 * Run `node server/server.js` for just the server
-* config.DAEMON support is broken for now
 * You can update `config/hot.js` on-the-fly with `node server/kill.js`
 * To remove compiled server dependancies run `make clean`
 * Similarly `make client_clean` removes compiled client files
@@ -40,7 +39,7 @@ loaded into a running server with `node server/kill.js`
 * ImageMagick
 * gcc, g++, make
 * libpng with development headers
-* [io.js](https://iojs.org) (Latest tested version is 2.0.2)
+* [io.js](https://iojs.org) >=2.0.0
 * redis
 
 ###Optional dependencies for various features
@@ -49,10 +48,7 @@ loaded into a running server with `node server/kill.js`
 * pngquant  2.3.0+ for PNG thumbnails
 
 ###Optional npm dependancies
-* ~~daemon~~ (broken currently)
 * node-expat for icecast now-playing banners
-* send (if you want to serve static files directly from the node.js
-process; useful in debug mode also)
 
 ## Documentation
 * [JSON API documentation: docs/api.md](https://github.com/bakape/meguca/blob/master/docs/api.md)

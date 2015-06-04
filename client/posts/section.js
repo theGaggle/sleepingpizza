@@ -12,10 +12,9 @@ var $ = require('jquery'),
 
 var Section = module.exports = Backbone.View.extend({
 	tagName: 'section',
-
-	initialize: function () {
+	initialize: function() {
 		// On the live page only
-		if (this.$el.is(':empty'))
+		if (!this.el.innerHTML)
 			this.render();
 		else
 			this.renderOmit(null, this.model.get('omit'));
@@ -32,12 +31,10 @@ var Section = module.exports = Backbone.View.extend({
 		});
 		this.initCommon();
 	},
-
 	render: function() {
 		let attrs = this.model.attributes;
 		oneeSama.links = attrs.links;
-		this.setElement(oneeSama.monomono(attrs).join(''));
-		this.insertToTop();
+		this.setElement(oneeSama.monomono(attrs).join('')).insertToTop();
 		// Insert reply box into the new thread
 		let $reply = $(oneeSama.replyBox());
 		if (state.ownPosts.hasOwnProperty(attrs.num)
@@ -47,25 +44,17 @@ var Section = module.exports = Backbone.View.extend({
 		this.$el.after($reply, '<hr>');
 		return this;
 	},
-
 	insertToTop: function() {
 		this.$el.insertAfter(main.$threads.children('aside').first());
 	},
-
-	renderHide: function (model, hide) {
-		this.$el.next('hr').andBack().toggle(!hide);
-	},
-
 	renderLocked: function (model, locked) {
 		this.$el.toggleClass('locked', !!locked);
 	},
-
-	remove: function () {
+	remove: function() {
 		this.$el.next('hr').addBack().remove();
 		this.stopListening();
 		return this;
 	},
-
 	/*
 	 Remove the top reply on board pages, if over limit, when a new reply is
 	 added
@@ -92,7 +81,6 @@ var Section = module.exports = Backbone.View.extend({
 			post.remove();
 		}
 	},
-
 	// Posts and images omited indicator
 	renderOmit: function(model, omit) {
 		if (omit === 0)
@@ -109,7 +97,6 @@ var Section = module.exports = Backbone.View.extend({
 		);
 		this.$omit.html(html);
 	},
-
 	// Move thread to the top of the page
 	bumpThread: function() {
 		this.$el.detach();
