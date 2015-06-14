@@ -1,7 +1,6 @@
 /*
  * Self-expiring localStorage key controller
  */
-'use strict';
 
 var $ = require('jquery'),
 	_ = require('underscore');
@@ -21,7 +20,7 @@ Kioku.prototype.bake_cookie = function (o) {
 };
 
 Kioku.prototype.now = function () {
-	return Math.floor(new Date().getTime() / 1000);
+	return Math.floor(Date.now() / 1000);
 };
 
 Kioku.prototype.purge_all = function () {
@@ -60,12 +59,11 @@ Kioku.prototype.purge_expired_soon = function () {
 };
 
 Kioku.prototype.read_all = function () {
-	var o;
-	try {
-		o = JSON.parse(localStorage.getItem(this.key));
-	}
-	catch (e) {}
-	return _.isObject(o) ? o : {};
+	const key = localStorage.getItem(this.key);
+	if (!key)
+		return {};
+	const val = JSON.parse(key);
+	return _.isObject(val) ? val : {};
 };
 
 Kioku.prototype.size = function() {

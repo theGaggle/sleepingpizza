@@ -2,55 +2,42 @@
  * OP and thread related logic
  */
 
-var $ = require('jquery'),
-	_ = require('underscore'),
-	Backbone = require('backbone'),
-	main = require('../main'),
-	oneeSama = main.oneeSama,
+let main = require('../main'),
 	postCommon = require('./common'),
-	state = require('../state');
+	{$, _, Backbone, oneeSama, state} = main;
 
 var Section = module.exports = Backbone.View.extend({
 	tagName: 'section',
-	initialize: function() {
+	initialize() {
 		// On the live page only
 		if (!this.el.innerHTML)
 			this.render();
 		else
-			this.renderOmit(null, this.model.get('omit'));
-
-		this.listenTo(this.model, {
-			'change:locked': this.renderLocked,
-			remove: this.remove,
-			shiftReplies: this.shiftReplies,
-			'change:omit': this.renderOmit,
-			bump: this.bumpThread
-		});
-		this.listenToOnce(this.model, {
-			'add': this.renderRelativeTime
-		});
+			this.renderOmit();
 		this.initCommon();
 	},
-	render: function() {
+	render() {
 		let attrs = this.model.attributes;
 		oneeSama.links = attrs.links;
-		this.setElement(oneeSama.monomono(attrs).join('')).insertToTop();
+		this.setElement(oneeSama.section(attrs).join('')).insertToTop();
 		// Insert reply box into the new thread
 		let $reply = $(oneeSama.replyBox());
 		if (state.ownPosts.hasOwnProperty(attrs.num)
 			|| !!main.request('postForm')
 		)
 			$reply.hide();
-		this.$el.after($reply, '<hr>');
+		this.$el.after($reply);
 		return this;
 	},
-	insertToTop: function() {
-		this.$el.insertAfter(main.$threads.children('aside').first());
+	insertToTop() {
+		this.$el
+			.insertAfter(main.$threads.children('aside').first())
+			.after('<hr>');
 	},
-	renderLocked: function (model, locked) {
+	renderLocked(model, locked) {
 		this.$el.toggleClass('locked', !!locked);
 	},
-	remove: function() {
+	remove() {
 		this.$el.next('hr').addBack().remove();
 		this.stopListening();
 		return this;
@@ -59,30 +46,35 @@ var Section = module.exports = Backbone.View.extend({
 	 Remove the top reply on board pages, if over limit, when a new reply is
 	 added
 	 */
-	shiftReplies: function(postForm) {
-		if (state.page.get('thread'))
-			return;
-		var replies = this.model.get('replies'),
-			lim = state.hotConfig.get('ABBREVIATED_REPLIES');
+	shiftReplies(postForm) {
+		let attrs = this.model.attributes,
+			lim = state.hotConfig.get('ABBREVIATED_REPLIES'),
+			replies = attrs.replies,
+			changed;
 		if (postForm)
 			lim--;
-		let image_omit = this.model.attributes.image_omit;
-		for (let i = replies.length; i > lim; i--) {
+		// Need a static length, because the original array get's modified
+		const len = replies.slice().length;
+		for (let i = len; i > lim; i--) {
 			let post = state.posts.get(replies.shift());
 			if (!post)
 				continue;
-			/*
-			 Nothing tracks changes on image_omit, but we want omit changes to
-			 properly trigger change events.
-			  */
 			if (post.get('image'))
-				image_omit++;
-			this.model.set('omit', this.model.get('omit') + 1 );
-			post.remove();
+				attrs.image_omit++;
+			attrs.omit++;
+			changed = true;
+			main.follow(() => post.remove());
 		}
+		if (changed)
+			this.renderOmit(attrs.omit, attrs.image_omit)
 	},
 	// Posts and images omited indicator
-	renderOmit: function(model, omit) {
+	renderOmit(omit, image_omit) {
+		if (typeof omit === 'undefined') {
+			const attrs = this.model.attributes;
+			omit = attrs.omit;
+			image_omit = attrs.image_omit;
+		}
 		if (omit === 0)
 			return;
 		if (!this.$omit) {
@@ -98,9 +90,14 @@ var Section = module.exports = Backbone.View.extend({
 		this.$omit.html(html);
 	},
 	// Move thread to the top of the page
-	bumpThread: function() {
+	bumpThread() {
+		this.$el.next('hr').remove();
 		this.$el.detach();
 		this.insertToTop();
+	},
+	// TEMP: Stub until we unify the DOM structure of OPs and replies
+	renderEditing() {
+
 	}
 });
 

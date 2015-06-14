@@ -234,9 +234,17 @@ function parse_dice(frag) {
 }
 exports.parse_dice = parse_dice;
 
+let cachedOffset;
 function serverTime() {
 	const d = Date.now();
-	return imports.isNode ? d : d + imports.main.request('time:offset');
+	if (imports.isNode)
+		return d;
+
+	// The offset is intialised as 0, so there is something to return, until
+	// we get a propper number from the server.
+	if (!cachedOffset)
+		cachedOffset = imports.main.request('time:offset');
+	return d + cachedOffset;
 }
 exports.serverTime = serverTime;
 
@@ -290,17 +298,6 @@ function pick_spoiler(metaIndex) {
 	return {index: imgs[i], next: (i + 1) % n};
 }
 exports.pick_spoiler = pick_spoiler;
-
-function new_tab_link(srcEncoded, inside, cls) {
-	return [
-		safe(parseHTML
-			`<a href="${srcEncoded}" target="_blank" rel="nofollow" class="${cls}">`
-		),
-		inside,
-		safe('</a>')
-	];
-}
-exports.new_tab_link = new_tab_link;
 
 exports.thumbStyles = ['small', 'sharp', 'hide'];
 
@@ -390,12 +387,12 @@ function parseHTML(callSite) {
 	for (let i = 1; i < len; i++)
 		args[i - 1] = arguments[i];
 
-	let output = callSite
+	const output = callSite
 		.slice(0, len)
 		.map(function(text, i) {
 			/*
-			 Simplifies conditionals. If the placeholder returns `false`, it is
-			 omitted.
+			 Simplifies conditionals. If the placeholder returns a non-zero
+			  falsy value, it is ommitted.
 			 */
 			const arg = args[i - 1];
 			return ((i === 0 || (!arg && arg !== 0)) ? '' : arg) + text;

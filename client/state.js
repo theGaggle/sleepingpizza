@@ -1,10 +1,9 @@
-/*
+1/*
  * Central model keeping the state of the page
  */
 
-var $ = require('jquery'),
-	Backbone = require('backbone'),
-	memory = require('./memory');
+let main = require('./main'),
+	{$, Backbone, memory} = main;
 
 // Read page state by parsing a URL
 function read(url) {
@@ -33,23 +32,13 @@ function read(url) {
 exports.read = read;
 
 // Initial page state
-var init = read(location.href);
-init.id = 'page';
-var page = exports.page = new Backbone.Model(init);
+var page = exports.page = new Backbone.Model(read(location.href));
 
 // Hot-reloadable configuration
 // TODO: We need actual listeners to this model for hot reloads.
-window.hotConfig.id = 'hotConfig';
 exports.hotConfig = new Backbone.Model(window.hotConfig);
 // Hash of all the config variables
 exports.configHash = window.configHash;
-
-// All posts currently displayed
-var posts = exports.posts = new Backbone.Collection();
-// Contains inter-post linking relations
-exports.linkerCore = new Backbone.Model({
-	id: 'linkerCore'
-});
 
 // Tracks the synchronisation counter of each thread
 exports.syncs = {};
@@ -60,3 +49,28 @@ exports.mine = new memory('mine', 2);
 // no cookie though
 exports.mine.bake_cookie = function () { return false; };
 $.cookie('mine', null); // TEMP
+
+// All posts currently displayed
+let posts = exports.posts = new Backbone.Collection();
+main.on('state:clear', function() {
+	/*
+	 * Emptying the whole element should be faster than removing each post
+	 * individually through models and listeners. Not that the `remove()`s
+	 * don't fire anymore...
+	 */
+	main.$threads[0].innerHTML = '';
+	const models = posts.models;
+	for (let i = 0, l = models.length; i < l; i++) {
+		// The <threads> tag has already been emptied, no need to perform
+		// element removal with the default `.remove()` method
+		models[i].dispatch('stopListening');
+	}
+	posts.reset();
+	// Prevent old threads from syncing
+	exports.syncs = {};
+	main.command('massExpander:unset');
+});
+
+// Contains inter-post linking relations
+exports.linkerCore = new Backbone.Model();
+

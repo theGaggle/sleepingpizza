@@ -1,8 +1,10 @@
+'use strict';
+
 var babelify = require('babelify'),
 	browserify = require('browserify'),
 	buffer = require('vinyl-buffer'),
 	concat = require('gulp-concat'),
-	debug = require('./config').DEBUG,
+	config = require('./config'),
 	deps = require('./deps'),
 	gulp = require('gulp'),
 	gulpif = require('gulp-if'),
@@ -14,6 +16,8 @@ var babelify = require('babelify'),
 	source = require('vinyl-source-stream'),
 	sourcemaps = require('gulp-sourcemaps'),
 	uglify = require('gulp-uglify');
+
+const debug = config.DEBUG;
 
 function gulper(name, files, dest) {
 	gulp.task(name, function() {
@@ -27,54 +31,66 @@ function gulper(name, files, dest) {
 			.pipe(gulp.dest('./state'));
 	});
 }
+gulper('mod', deps.mod, './state');
 
 gulp.task('css', function() {
 	return gulp.src('./less/*.less')
 		.pipe(sourcemaps.init())
 		.pipe(less())
 		.pipe(minifyCSS({rebase: false}))
-		.pipe(rev())
 		.pipe(sourcemaps.write('./maps/'))
 		.pipe(gulp.dest('./www/css'))
-		.pipe(rev.manifest('css.json'))
 		.pipe(gulp.dest('./state'));
 });
 
-function build(name, b) {
+function build(name, b, dest) {
 	gulp.task(name, function() {
-		return b.bundle()
-			// Transform into vinyl stream
-			.pipe(source(name + '.js'))
-			.pipe(buffer())
-			.pipe(sourcemaps.init({loadMaps: true}))
-			// TEMP: Don't minify the client, until we get minification
-			// support for ES6
-			.pipe(gulpif(!debug && name !== 'client', uglify()))
-			.on('error', gutil.log)
-			.pipe(sourcemaps.write('./'))
-			.pipe(gulp.dest('./www/js'));
+		return bundler(name, b, dest);
 	});
 }
 
-build('client', browserify(require.resolve('./client/main.js'),
-	{
-		entry: true,
+function bundler(name, b, dest) {
+	// TEMP: Don't minify the client, until we get minification support for ES6
+	const canMinify = !debug && (name !== 'client');
+	return b.bundle()
+		// Transform into vinyl stream
+		.pipe(source(name + '.js'))
+		.pipe(buffer())
+		.pipe(sourcemaps.init({loadMaps: true}))
+		.pipe(gulpif(canMinify, uglify()))
+		.on('error', gutil.log)
+		.pipe(sourcemaps.write('./'))
+		.pipe(gulp.dest(dest));
+}
+
+function buildClient() {
+	return browserify({
+		entries: './client/main',
 		// Needed for sourcemaps
 		debug: true,
 		bundleExternal: false,
-		require: ['./client/main'],
 		external: [
 			'jquery',
 			'jquery.cookie',
 			'underscore',
 			'backbone',
 			'backbone.radio',
-			'stack-blur'
+			'stack-blur',
+			'lang'
 		]
 	})
+		// Exclude these requires on the client
+		.exclude('../config')
+		.exclude('../lang/')
+		.exclude('../server/state')
 		// Make available outside the bundle with require() under a
 		// shorthand name
-		.require('./client/main', {expose: 'main'})
+		.require('./client/main', {expose: 'main'});
+}
+
+// Main client bundler
+{
+	let b = buildClient()
 		// Transpile ES6 functionality that is not yet supported by the latest
 		// stable Chrome and FF to ES5. Ancient and hipster browsers can
 		// suck my dick.
@@ -96,30 +112,48 @@ build('client', browserify(require.resolve('./client/main.js'),
 				'regenerator',
 				'runtime'
 			]
-		}))
-		// Exclude these requires on the client
-		.exclude('../config')
-		.exclude('../lang/')
-		.exclude('../server/state')
-);
+		}));
 
-build('vendor', browserify(
-	{
+	build('client', b, './www/js');
+}
+
+// Less performant client for older browser compatibility
+{
+	let b = buildClient().transform(babelify.configure({
+		optional: [
+			'es6.spec.blockScoping'
+		]
+	}));
+
+	build('legacy', b, './www/js');
+}
+
+// Libraries
+{
+	let b = browserify({
 		require: [
 			'jquery',
 			'jquery.cookie',
 			'underscore',
 			'backbone',
-			'backbone.radio'
+			'backbone.radio',
+			'scriptjs'
 		],
-		expose: {
-			'./lib/stack-blur': 'stack-blur'
-		},
 		debug: true
 	})
-		.require('./lib/stack-blur', {expose: 'stack-blur'})
-);
+		.require('./lib/stack-blur', {expose: 'stack-blur'});
 
-(function() {
-	gulper('mod', deps.mod, './state');
-})();
+	build('vendor', b, './www/js');
+}
+
+gulp.task('lang', function() {
+	// Language bundles
+	const langs = config.LANGS;
+	for (let i = 0, l = langs.length; i < l; i++) {
+		const lang = langs[i];
+		let b = browserify({debug: true})
+			.require(`./lang/${lang}/common`, {expose: 'lang'});
+		bundler(lang, b, './www/js/lang');
+	}
+});
+

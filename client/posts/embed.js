@@ -1,12 +1,11 @@
 /*
 Youtube, soundcloud and pastebin link embeding
  */
-'use strict';
 
 // TODO: DRY this shit
 
-var $ = require('jquery'),
-	main = require('../main');
+let main = require('../main'),
+	{$} = main;
 
 // >80 char rule
 const youtube_url_re = exports.youtube_url_re = /(?:>>>*?)?(?:https?:\/\/)?(?:www\.|m.)?youtube\.com\/watch\/?\?((?:[^\s#&=]+=[^\s#&]*&)*)?v=([\w-]{11})((?:&[^\s#&=]+=[^\s#&]*)*)&?(#t=[\dhms]{1,9})?/,
@@ -92,7 +91,7 @@ main.$threads.on('click', '.watch', function(e) {
 					start += parseInt(t[3], 10);
 			}
 		}
-		main.command('scroll:follow', () =>
+		main.follow(() =>
 			$target
 				.css('width', video_dims().width)
 				.append('<br>', make_video(url, null, start))
@@ -113,7 +112,7 @@ main.$threads.on('mouseenter', '.watch', function (event) {
 	if (!node)
 		return;
 	const orig = node.textContent;
-	main.command('scroll:follow', () => node.textContent = orig + '...');
+	main.follow(() => node.textContent = orig + '...');
 	var m = $target.attr('href').match(youtube_url_re);
 	if (!m){
 		m = $target.attr('href').match(youtube_short_re);
@@ -124,11 +123,9 @@ main.$threads.on('mouseenter', '.watch', function (event) {
 			data: {v: '2', alt: 'jsonc'},
 			dataType: 'json',
 			success: (data) =>
-				main.command('scroll:follow', () => gotInfo.bind(null, data)),
+				main.follow(() => gotInfo.bind(null, data)),
 			error: () =>
-				main.command('scroll:follow', () =>
-					node.textContent = orig + '???'
-				)
+				main.follow(() => node.textContent = orig + '???')
 		});
 	}
 
@@ -136,12 +133,10 @@ main.$threads.on('mouseenter', '.watch', function (event) {
 		url: '//gdata.youtube.com/feeds/api/videos/' + m[2],
 		data: {v: '2', alt: 'jsonc'},
 		dataType: 'json',
-		success: (data) =>
-			main.command('scroll:follow', () => gotInfo.bind(null, data)),
+		success: data =>
+			main.follow(() => gotInfo.bind(null, data)),
 		error: () =>
-			main.command('scroll:follow', () =>
-				node.textContent = orig + '???'
-			)
+			main.follow(() => node.textContent = orig + '???')
 	});
 	// Creates the Titles upon hover
 	// NOTE: Condense gotInfos into single function
@@ -212,9 +207,7 @@ main.$threads.on('click', '.soundcloud', function (e) {
 		return;
 	const width = Math.round($(window).innerWidth() * 0.75);
 	$obj = make_soundcloud(m[1], {width: width, height: 81});
-	main.command('scroll:follow', () =>
-		$target.css('width', width).append('<br>', $obj)
-	);
+	main.follow(() => $target.css('width', width).append('<br>', $obj));
 	return false;
 });
 
@@ -231,7 +224,7 @@ main.$threads.on('mouseenter', '.soundcloud', function (event) {
 	if (!node)
 		return;
 	var orig = node.textContent;
-	main.command('scroll:follow', () => node.textContent = orig + '...');
+	main.follow(() => node.textContent = orig + '...');
 	var m = $target.attr('href').match(soundcloud_url_re);
 	if (!m)
 		return;
@@ -240,12 +233,10 @@ main.$threads.on('mouseenter', '.soundcloud', function (event) {
 		url: '//soundcloud.com/oembed',
 		data: {format: 'json', url: 'http://soundcloud.com/' + m[1]},
 		dataType: 'json',
-		success: (data) =>
-			main.command('scroll:follow', () => gotInfo.bind(null, data)),
+		success: data =>
+			main.follow(() => gotInfo.bind(null, data)),
 		error: () =>
-			main.command('scroll:follow', () =>
-					node.textContent = orig + '???'
-			)
+			main.follow(() => node.textContent = orig + '???')
 	});
 
 	function gotInfo(data) {

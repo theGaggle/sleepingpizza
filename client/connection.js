@@ -1,20 +1,12 @@
 /*
  * Websocket controller and connection notifier
  */
-'use strict';
 
-var $ = require('jquery'),
-	_ = require('underscore'),
-	main = require('./main'),
-	common = main.common,
-	state = main.state;
+let main = require('./main'),
+	{$, _, common, config, connSM, state} = main;
 
 let SockJS = window.SockJS,
-	connSM = main.connSM,
 	socket, attempts, attemptTimer;
-const config = main.config;
-
-main.comply('send', send);
 
 function send(msg) {
 	// need deferral or reporting on these lost messages...
@@ -31,11 +23,12 @@ function send(msg) {
 		console.log('<', msg);
 	socket.send(msg);
 }
+main.comply('send', send);
 
 function on_message(e) {
 	if (config.DEBUG)
 		console.log('>', e.data);
-	main.command('scroll:follow', function() {
+	main.follow(function() {
 		let data = JSON.parse(e.data);
 		for (let i = 0, lim = data.length; i < lim; i++) {
 			let msg = data[i];

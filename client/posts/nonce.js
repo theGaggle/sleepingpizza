@@ -2,9 +2,8 @@
 Cryptographic nonces for websocket transactions
  */
 
-var main = require('../main'),
-	common = main.common,
-	state = main.state;
+let main = require('../main'),
+	{common, state} = main;
 
 let nonceCache = {};
 
@@ -30,7 +29,7 @@ function save_nonces(nonces) {
 }
 
 function today_id() {
-	return Math.floor(new Date().getTime() / (1000*60*60*24));
+	return Math.floor(Date.now() / (1000*60*60*24));
 }
 
 function create() {

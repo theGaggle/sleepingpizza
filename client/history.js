@@ -2,21 +2,18 @@
  * Inter board/page/thread navigation with HTML5 history
  */
 
-var $ = require('jquery'),
-	_ = require('underscore'),
-	common = require('../common'),
-	Extract = require('./extract'),
-	main = require('./main'),
-	state = require('./state');
+let main = require('./main'),
+	{$, _, common, Extract, state} = main;
 
 // Click handler for post/thread/board links
 main.$doc.on ('click', 'a.history', function(event) {
+	if (event.ctrlKey)
+		return;
 	readingSteiner(this.href, event, true);
 });
 
 // Loading status GIF
 let $loading = $('#loadingImage');
-
 main.comply('loading:show', () => $loading.show());
 main.comply('loading:hide', () => $loading.hide());
 
@@ -43,28 +40,19 @@ function readingSteiner(url, event, needPush) {
 	 * that are not several thousand posts large.
 	 */
 	$loading.show();
-	$.get(address, function(data) {
-		if (!data)
-			return alert('Fetch failed: ' + url);
+	$.get(address, function(data, status, xhr) {
+		// In case the thread is dead, moderatator cookie expired or some
+		// other shananigans
+		if (xhr.status !== 200)
+			location.replace(this.url.split('?')[0]);
 
-		/*
-		 * Emptying the whole element should be faster than removing each post
-		 * individually through models and listeners. Not that the `remove()`s
-		 * don't fire anymore...
-		 */
-		main.$threads.empty();
-		state.posts.models.forEach(function(model) {
-			model.remove();
-		});
-		// Prevent old threads from syncing
-		state.syncs = {};
+		main.trigger('state:clear');
 		// Apply new DOM and load models
 		main.$threads.html(data);
 		// Set new page state
 		state.page.set(nextState);
 		// Reconfigure rendering singleton
 		main.oneeSama.op = nextState.thread;
-		main.command('massExpander:unset');
 		new Extract();
 		// Swap the database controller server-side
 		main.command('send', [
@@ -77,10 +65,10 @@ function readingSteiner(url, event, needPush) {
 		if (needPush){
 			history.pushState(null, null, url);
 			// Scroll to top on new pages with no hashes
-			if (!location.hash)
-				window.scrollTo(0, 0);
-			else
+			if (location.hash)
 				main.command('scroll:aboveBanner');
+			else
+				window.scrollTo(0, 0);
 		}
 		$loading.hide();
 	});

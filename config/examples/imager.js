@@ -1,4 +1,4 @@
-module.exports = {
+var config = module.exports = {
 	IMAGE_FILESIZE_MAX: 1024 * 1024 * 3,
 	IMAGE_WIDTH_MAX: 6000,
 	IMAGE_HEIGHT_MAX: 6000,
@@ -7,7 +7,6 @@ module.exports = {
 		src: 'www/src',
 		thumb: 'www/thumb',
 		mid: 'www/mid',
-		vint: 'www/vint',
 		dead: 'graveyard',
 		tmp: 'imager/tmp'
 	},
@@ -82,11 +81,9 @@ module.exports = {
  */
 	SPOILER_IMAGES: [1, 2, 3],
 
-/*
- * File names of the images to use as banners inside the ./www/banners
- * Example: ['banner01.png', 'banner02.gif', 'banner03.jpg'] or null
- */
-	BANNERS: null,
-
 	IMAGE_HATS: false
 };
+
+// Default to primary URL
+if (!config.SECONDARY_MEDIA_URL)
+	config.SECONDARY_MEDIA_URL = config.MEDIA_URL;

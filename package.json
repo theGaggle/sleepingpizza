@@ -18,7 +18,7 @@
     "start": "node server/server.js"
   },
   "dependencies": {
-    "async": "^0.9.0",
+    "async": "^1.2.0",
     "babelify": "^6.0.2",
     "backbone": "1.1.2",
     "backbone.radio": "^0.9.0",
@@ -46,6 +46,7 @@
     "recaptcha": "^1.2.0",
     "redis": "^0.12.1",
     "request": "^2.53.0",
+    "scriptjs": "^2.5.7",
     "sockjs": "^0.3.12",
     "tmp": "^0.0.24",
     "underscore": "1.8.3",
@@ -55,7 +56,7 @@
     "winston": "^0.9.0"
   },
   "optionalDependencies": {
-    "hiredis": "^0.2.0",
+    "hiredis": "^0.4.0",
     "node-expat": "^2.3.4",
     "nodemailer": "^0.5.2"
   }

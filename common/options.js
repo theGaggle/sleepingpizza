@@ -148,7 +148,6 @@ var opts = [
 		tab: 0,
 		exec: function(toggle) {
 			main.oneeSama.rTime = toggle;
-			$.cookie('rTime', toggle, {path: '/'});
 		}
 	},
 	/* R/A/DIO NOW PLAYING BANNER */
@@ -163,7 +162,7 @@ var opts = [
 				// Query the server for current stream info
 				main.command('send', [index.RADIO]);
 			else
-				main.command('clearRadioBanner');
+				main.command('banner:radio:clear');
 		}
 	}
 ];
@@ -259,10 +258,11 @@ opts.push(
 			return hotConfig.BOARD_CSS[state.page.get('board')]
 		},
 		exec: function(theme) {
-			if (theme) {
-				$('#theme').attr('href', config.MEDIA_URL + 'css/'
-					+ hotConfig.css[theme + '.css']);
-			}
+			if (!theme)
+				return;
+			$('#theme').attr('href',
+				`${config.MEDIA_URL}css/${theme}.css?v=${cssHash}`
+			);
 		}
 	},
 	/* CUSTOM USER-SET BACKGROUND */

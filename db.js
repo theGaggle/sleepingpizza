@@ -10,7 +10,7 @@ var _ = require('underscore'),
     fs = require('fs'),
     hooks = require('./util/hooks'),
     hot = require('./server/state').hot,
-// set up hooks
+	// set up hooks
     imager = require('./imager'),
     Muggle = require('./util/etc').Muggle,
     tail = require('./util/tail'),
@@ -272,9 +272,6 @@ function update_cache(chan, msg) {
 			OPs[op] = op;
 		}
 	}
-	else if (kind == common.MOVE_THREAD) {
-		set_OP_tag(tag, op);
-	}
 	else if (kind == common.DELETE_POSTS) {
 		const nums = msg.nums;
 		for (let i = 0, l = msg.num.length; i < l; i++) {
@@ -316,11 +313,6 @@ function load_OPs(callback) {
 			async.forEach(threads, function (op, cb) {
 				op = parseInt(op, 10);
 				var ps = [scan_thread.bind(null,tagIndex,op)];
-				if (!config.READ_ONLY && config.THREAD_EXPIRY
-							&& tag != 'archive') {
-					ps.push(refresh_expiry.bind(null,
-							tag, op));
-				}
 				async.parallel(ps, cb);
 			}, cb);
 		});
@@ -339,42 +331,7 @@ function load_OPs(callback) {
 			cb(null);
 		});
 	}
-
-	var expiryKey = expiry_queue_key();
-	function refresh_expiry(tag, op, cb) {
-		if (tag == config.STAFF_BOARD)
-			return cb(null);
-		var entry = op + ':' + tag_key(tag);
-		var queries = ['time', 'immortal'];
-		hmget_obj(r, 'thread:'+op, queries, function (err, thread) {
-			if (err)
-				return cb(err);
-			if (!thread.time) {
-				winston.warn('Thread '+op+" doesn't exist.");
-				var m = r.multi();
-				m.zrem(threadsKey, op);
-				m.zrem(expiryKey, entry);
-				m.exec(cb);
-				return;
-			}
-			if (thread.immortal)
-				return r.zrem(expiryKey, entry, cb);
-			var score = expiry_queue_score(thread.time, tag);
-			r.zadd(expiryKey, score, entry, cb);
-		});
-	}
 }
-
-function expiry_queue_score(time, board) {
-	// Use default of 7 days, if not configured
-	var expiry = config.THREAD_EXPIRY[board] || 3600 * 24 * 7;
-	return Math.floor(parseInt(time, 10)/1000 + expiry);
-}
-
-function expiry_queue_key() {
-	return 'expiry:all';
-}
-exports.expiry_queue_key = expiry_queue_key;
 
 /* SOCIETY */
 
@@ -526,19 +483,20 @@ Y.insert_post = function (msg, body, extra, callback) {
 	let r = this.connect();
 	if (!this.tag)
 		return callback(Muggle("Can't retrieve board for posting."));
+	let op = msg.op;
 	const ip = extra.ip,
 		board = extra.board,
-		num = msg.num;
-	let op = msg.op;
+		num = msg.num,
+		isThead = !op;
+	if (!op)
+		op = num;
 	if (!num)
 		return callback(Muggle("No post number."));
 	else if (!ip)
 		return callback(Muggle("No IP."));
-	else if (op) {
-		if (OPs[op] != op || !OP_has_tag(board, op)) {
-			delete OPs[num];
-			return callback(Muggle('Thread does not exist.'));
-		}
+	else if (!isThead && (OPs[op] != op || !OP_has_tag(board, op))) {
+		delete OPs[num];
+		return callback(Muggle('Thread does not exist.'));
 	}
 
 	let view = {
@@ -554,37 +512,35 @@ Y.insert_post = function (msg, body, extra, callback) {
 			view[field] = msg[field];
 	}
 	const tagKey = 'tag:' + tag_key(this.tag);
-	if (op)
-		view.op = op;
-	else {
+	if (isThead) {
 		view.tags = tag_key(board);
 		if (board == config.STAFF_BOARD)
 			view.immortal = 1;
 	}
+	else
+		view.op = op;
 
 	if (extra.image_alloc) {
 		msg.image = extra.image_alloc.image;
-		if (!op == msg.image.pinky)
+		if (isThead == msg.image.pinky)
 			return callback(Muggle("Image is the wrong size."));
 		delete msg.image.pinky;
 	}
 
-	const key = (op ? 'post:' : 'thread:') + num,
-		bump = !op || !common.is_sage(view.email);
+	const key = (isThead ? 'thread:' : 'post:') + num;
 	let m = r.multi();
 	m.incr(tagKey + ':postctr'); // must be first
-	if (op)
-		m.hget('thread:' + op, 'subject'); // must be second
-	if (bump)
-		m.incr(tagKey + ':bumpctr');
 	m.sadd('liveposts', key);
 
-	hooks.trigger_sync('inlinePost', {src: msg, dest: view});
+	hooks.trigger_sync('inlinePost', {
+		src: msg,
+		dest: view
+	});
 	if (msg.image) {
-		if (op)
-			m.hincrby('thread:' + op, 'imgctr', 1);
-		else
+		if (isThead)
 			view.imgctr = 1;
+		else
+			m.hincrby('thread:' + op, 'imgctr', 1);
 		note_hash(m, msg.image.hash, msg.num);
 	}
 	m.hmset(key, view);
@@ -596,23 +552,16 @@ Y.insert_post = function (msg, body, extra, callback) {
 		augments: {},
 		cacheUpdate: {}
 	};
-	if (op) {
-		etc.cacheUpdate.num = num;
-		var pre = 'thread:' + op;
-		m.rpush(pre + ':posts', num);
-	}
-	else {
+	if (isThead) {
 		// TODO: Add to alternate thread list?
-		// set conditional hide?
-		op = num;
-		if (!view.immortal) {
-			const score = expiry_queue_score(msg.time, board),
-				entry = `${num}:${tag_key(this.tag)}`;
-			m.zadd(expiry_queue_key(), score, entry);
-		}
+
 		/* Rate-limit new threads */
 		if (ip != '127.0.0.1')
 			m.setex('ip:'+ip+':throttle:thread', config.THREAD_THROTTLE, op);
+	}
+	else {
+		etc.cacheUpdate.num = num;
+		m.rpush(`thread:${op}:posts`, num);
 	}
 
 	/* Denormalize for backlog */
@@ -623,7 +572,8 @@ Y.insert_post = function (msg, body, extra, callback) {
 	extract(view);
 	delete view.ip;
 
-	let self = this;
+	let self = this,
+		bump;
 	async.waterfall(
 		[
 			function (next) {
@@ -631,31 +581,38 @@ Y.insert_post = function (msg, body, extra, callback) {
 					return next(null);
 				imager.commit_image_alloc(extra.image_alloc, next);
 			},
-			function (next) {
+			// Determine, if we need to bump the thread to the top of
+			// the board
+			function(next) {
+				if (isThead) {
+					bump = true;
+					return next();
+				}
+
+				r.llen(`thread:${op}:posts`, function(err, res) {
+					if (err)
+						return next(err);
+					bump = !common.is_sage(view.email)
+						&& res < config.BUMP_LIMIT[board];
+					next();
+				});
+			},
+			function(next) {
 				if (ip) {
 					const n = post_volume(view, body);
 					if (n > 0)
 						update_throughput(m, ip, view.time, n);
 					etc.augments.auth = {ip: ip};
 				}
-
-				self._log(m, op, common.INSERT_POST, [num, view], etc);
-
+				if (bump)
+					m.incr(tagKey + ':bumpctr');
+				self._log(m, op, common.INSERT_POST, [view, bump], etc);
 				m.exec(next);
 			},
-			function (results, next) {
+			function(res, next) {
 				if (!bump)
 					return next();
-				const postctr = results[0];
-				const subject = subject_val(
-					op,
-					op == num ? view.subject : results[1]
-				);
-				let m = r.multi();
-				m.zadd(tagKey + ':threads', postctr, op);
-				if (subject)
-					m.zadd(tagKey + ':subjects', postctr, subject);
-				m.exec(next);
+				r.zadd(tagKey + ':threads', res[0], op, next);
 			}
 		],
 		function (err) {
@@ -784,16 +741,11 @@ Y.remove_thread = function (op, callback) {
 	function (rs, next) {
 		var deadCtr = rs[0], post = rs[1];
 		var tags = parse_tags(post.tags);
-		var subject = subject_val(op, post.subject);
 		/* Rename thread keys, move to graveyard */
 		var m = r.multi();
-		var expiryKey = expiry_queue_key();
 		tags.forEach(function (tag) {
 			var tagKey = tag_key(tag);
-			m.zrem(expiryKey, op + ':' + tagKey);
 			m.zrem('tag:' + tagKey + ':threads', op);
-			if (subject)
-				m.zrem('tag:' + tagKey + ':subjects', subject);
 		});
 		m.zadd(graveyardKey + ':threads', deadCtr, op);
 		etc.tags = tags;
@@ -823,158 +775,137 @@ Y.remove_thread = function (op, callback) {
 	}], callback);
 };
 
-// Purges all the thread's keys from the database and delete's all images
-// contained
-Y.purge_thread = function(op, callback){
-	var r = this.connect();
-	var key = 'thread:' + op;
+// Purges all the thread's keys from the database and delete's all
+// images contained
+Y.purge_thread = function(op, board, callback) {
+	let r = this.connect();
+	const key = 'thread:' + op;
+	let keysToDel = [],
+		filesToDel = [];
 	async.waterfall([
 		// Confirm thread can be deleted
-		function(next){
-			var m = r.multi();
+		function(next) {
+			let m = r.multi();
 			m.exists(key);
 			m.hget(key, 'immortal');
 			m.exec(next);
 		},
-		function(res, next){
-			if (!res[0])
-				return callback(Muggle(key + ' does not exist.'));
+		function(res, next) {
+			// Likely to happen, if interrupted mid-purge
+			if (!res[0]) {
+				r.zrem(`tag:${tag_key(board)}:threads`, op);
+				return next(key + ' does not exist.');
+			}
 			if (parseInt(res[1], 10))
-				return callback(Muggle(key + ' is immortal.'));
-			// Get post list
+				return next(key + ' is immortal.');
+			// Get reply list
 			r.lrange(key + ':posts', 0, -1, next);
 		},
-		// Read all thread's hashes
-		function(res, next){
-			var m = r.multi();
-			m.hgetall(key);
-			if (res) {
-				for (let i = 0, l = res.length; i < l; i++)
-					m.hgetall('post:' + res[i]);
+		// Read all post hashes
+		function(posts, next) {
+			let m = r.multi();
+			for (let i = 0, l = posts.length; i < l; i++) {
+				posts[i] = 'post:' + posts[i];
 			}
-			m.exec(next);
+			// Parse OP key like all other hashes. `res` will always be an
+			// array, even if empty.
+			posts.unshift(key);
+			for (let i = 0, l = posts.length; i < l; i++) {
+				const key = posts[i];
+				m.hgetall(key);
+				m.exists(key + ':links');
+			}
+			// Abit more complicated, because we need to pass two arguments
+			// to the next function, to map the arrays
+			m.exec(function(err, res) {
+				if (err)
+					return next(err);
+				next(null, res, posts);
+			})
 		},
-		function(res, next){
-			// Delete images
-			var to_delete = [];
-			var imp = imager.media_path;
-			var m = r.multi();
-			for (let i = 0, len = res.length; i < len; i++) {
-				if (res[i].src)
-					to_delete.push(imp('src', res[i].src));
-				if (res[i].thumb)
-					to_delete.push(imp('thumb', res[i].thumb));
-				if (res[i].mid)
-					to_delete.push(imp('mid', res[i].mid));
-			}
-			for (let i = 0, l = to_delete.length; i < l; i++) {
-				fs.unlink(to_delete[i], function(err){
-					if (err)
-						winston.error(err);
-				});
-			}
-			m.lrange(key + ':posts', 0, -1);
-			m.zrem('tag:' + res[0].tags + ':threads', op);
-			m.exec(next);
-		},
-		function(res, done){
-			// Delete post keys
-			var m = r.multi();
-			if (res[0]) {
-				for (let i = 0, lim = res[0].length; i < lim; i++) {
-					m.del('post:' + res[0][i]);
-					m.del('post:' + res[0][i] + ':links');
+		// Populate key and file to delete arrays
+		function(res, posts, next) {
+			const imageTypes = ['src', 'thumb', 'mid'];
+			let path = imager.media_path;
+			for (let i = 0, l = res.length; i < l; i += 2) {
+				const hash = res[i],
+					key = posts.shift();
+				if (!hash)
+					continue;
+				// Add links
+				keysToDel.push(key);
+				// `key:links` exists
+				if (res[i + 1])
+					keysToDel.push(key + ':links');
+				// Add images to delete list
+				for (let o = 0, len = imageTypes.length; o < len; o++) {
+					const type = imageTypes[o],
+						image = hash[type];
+					if (!image)
+						continue;
+					filesToDel.push(path(type, image));
 				}
 			}
-			// Delete thread keys
-			m.del(key);
-			m.del(key + ':links');
-			m.del(key + ':dels');
-			m.del(key + ':history');
-			m.del(key + ':posts');
-			m.del(key + ':body');
-			m.exec(done);
-			removeOPTag(op);
+			next();
 		},
-		callback
-	]);
-};
+		// Check for OP-only keys
+		function(next) {
+			const suffixes = ['dels', 'history', 'posts', 'body'];
+			let OPKeys = [],
+				m = r.multi();
+			for (let i = 0, l = suffixes.length; i < l; i++) {
+				OPKeys.push(`${key}:${suffixes[i]}`);
+			}
+			for (let i = 0, l = OPKeys.length; i < l; i++) {
+				m.exists(OPKeys[i]);
+			}
+			m.exec(function(err, res) {
+				if (err)
+					return next(err);
+				next(null, res, OPKeys);
+			})
+		},
+		function(res, OPKeys, next) {
+			let keys = keysToDel;
+			for (let i = 0, l = res.length; i < l; i++) {
+				if (res[i])
+					keys.push(OPKeys[i]);
+			}
 
-Y.archive_thread = function (op, callback) {
-	var r = this.connect();
-	var key = 'thread:' + op, archiveKey = 'tag:' + tag_key('archive');
-	var self = this;
-	async.waterfall([
-	function (next) {
-		var m = r.multi();
-		m.exists(key);
-		m.hget(key, 'immortal');
-		m.zscore('tag:' + tag_key('graveyard') + ':threads', op);
-		m.exec(next);
-	},
-	function (rs, next) {
-		if (!rs[0])
-			return callback(Muggle(key + ' does not exist.'));
-		if (parseInt(rs[1], 10))
-			return callback(Muggle(key + ' is immortal.'));
-		if (rs[2])
-			return callback(Muggle(key + ' is already deleted.'));
-		var m = r.multi();
-		// order counts
-		m.hgetall(key);
-		m.hgetall(key + ':links');
-		m.llen(key + ':posts');
-		m.lrange(key + ':dels', 0, -1);
-		m.exec(next);
-	},
-	function (rs, next) {
-		var view = rs[0], links = rs[1], replyCount = rs[2], dels = rs[3];
-		var subject = subject_val(op, view.subject);
-		var tags = view.tags;
-		var m = r.multi();
-		// move to archive tag only
-		m.hset(key, 'origTags', tags);
-		m.hset(key, 'tags', tag_key('archive'));
-		tags = parse_tags(tags);
-		for (let i = 0, lim = tags.length; i < lim; i++) {
-			const tagKey = 'tag:' + tag_key(tags[i]);
-			m.zrem(tagKey + ':threads', op);
-			if (subject)
-				m.zrem(tagKey + ':subjects', subject);
+			// Delete all keys
+			let m = r.multi();
+			for (let i = 0, l = keys.length; i < l; i++) {
+				m.del(keys[i]);
+			}
+			m.exec(next);
+		},
+		function(res, next) {
+			// Delete all images
+			async.each(filesToDel,
+				function(file, cb) {
+					fs.unlink(file, function(err) {
+						if (err)
+							return cb(err);
+						cb();
+					});
+				},
+				function(err) {
+					if (err)
+						return next(err);
+					next();
+				}
+			);
+		},
+		function(next) {
+			// Delete thread entry from the set
+			r.zrem(`tag:${tag_key(board)}:threads`, op, next);
+		},
+		function(res, next) {
+			// Clear thread number from caches
+			removeOPTag(op);
+			next();
 		}
-		m.zadd(archiveKey + ':threads', op, op);
-		self._log(m, op, common.DELETE_THREAD, [], {tags: tags});
-
-		// shallow thread insertion message in archive
-		if (!_.isEmpty(links))
-			view.links = links;
-		extract(view);
-		delete view.ip;
-		view.replyctr = replyCount;
-		view.hctr = 0;
-		var etc = {tags: ['archive'], cacheUpdate: {}};
-		self._log(m, op, common.MOVE_THREAD, [view], etc);
-
-		// clear history; note new history could be added
-		// for deletion in the archive
-		// (a bit silly right after adding a new entry)
-		m.hdel(key, 'hctr');
-		m.del(key + ':history');
-
-		// delete hidden posts
-		for (let i = 0, l = dels.length; i < l; i++) {
-			let num = dels[i];
-			m.del('post:' + num);
-			m.del('post:' + num + ':links');
-		}
-		m.del(key + ':dels');
-
-		m.exec(next);
-	},
-	function (results, done) {
-		set_OP_tag(config.BOARDS.indexOf('archive'), op);
-		done();
-	}], callback);
+	], callback);
 };
 
 /* BOILERPLATE CITY */
@@ -1140,6 +1071,9 @@ Y.check_thread_locked = function (op, callback) {
 };
 
 Y.check_throttle = function (ip, callback) {
+	// So we can spam new threads in debug mode
+	if (config.DEBUG)
+		return callback(null);
 	var key = 'ip:' + ip + ':throttle:thread';
 	this.connect().exists(key, function (err, exists) {
 		if (err)
@@ -1379,12 +1313,11 @@ Y.get_tag = function(page) {
 	let r = this.connect(),
 		self = this;
 	const keyBase = 'tag:' + tag_key(this.tag),
-		key = keyBase + ':threads',
-		reverseOrder = this.tag === 'archive';
+		key = keyBase + ':threads';
 
 	// -1 is for live pages and -2 is for catalog
 	const catalog = page === -2;
-	if (page < 0 && !reverseOrder)
+	if (page < 0)
 		page = 0;
 	let start, end;
 	if (catalog) {
@@ -1398,10 +1331,7 @@ Y.get_tag = function(page) {
 	}
 
 	let m = r.multi();
-	if (reverseOrder)
-		m.zrange(key, start, end);
-	else
-		m.zrevrange(key, start, end);
+	m.zrevrange(key, start, end);
 	m.zcard(key);
 	// Used for building board eTags
 	m.get(keyBase + ':postctr');
@@ -1411,8 +1341,6 @@ Y.get_tag = function(page) {
 		let nums = res[0];
 		if (page > 0 && !nums.length)
 			return self.emit('nomatch');
-		if (reverseOrder)
-			nums.reverse();
 		self.emit('begin', res[1] || 0, res[2] || 0);
 		let reader = new Reader(self.ident);
 		reader.on('error', self.emit.bind(self, 'error'));
@@ -1461,7 +1389,7 @@ class Reader extends events.EventEmitter {
 		const graveyard = tag === 'graveyard';
 		if (graveyard)
 			opts.showDead = true;
-		const key = (graveyard ? 'dead:' : 'thread:') + num;
+		const key = (graveyard ? 'dead:' : 'thread:') + num; 
 		let self = this;
 		r.hgetall(key, function(err, pre_post) {
 			if (err)
@@ -1495,11 +1423,7 @@ class Reader extends events.EventEmitter {
 				return;
 			}
 			self.emit('begin', pre_post);
-			/*
-			 A bit useless now, but might as well keep it for some backwards
-			 comatibility with older database entries.
-			 */
-			pre_post.num = num;
+
 			pre_post.time = parseInt(pre_post.time, 10);
 
 			let nums, deadNums, opPost,
@@ -1555,6 +1479,9 @@ class Reader extends events.EventEmitter {
 						if (!self.showIPs)
 							delete opPost.ip;
 						opPost.hctr = parseInt(opPost.hctr, 10);
+						// So we can pass a thread number on `endthread`
+						// emission
+						opts.op = opPost.num;
 						next(null);
 					}
 				],
@@ -1601,7 +1528,7 @@ class Reader extends events.EventEmitter {
 	}
 	_get_each_reply(tag, ix, nums, opts) {
 		if (!nums || ix >= nums.length) {
-			this.emit('endthread');
+			this.emit('endthread', opts.op);
 			this.emit('end');
 			return;
 		}
@@ -1779,11 +1706,8 @@ function get_all_replies(r, op, cb) {
 }
 
 function extract(post) {
+	post.num = parseInt(post.num, 10);
 	hooks.trigger_sync('extractPost', post);
-}
-
-function subject_val(op, subject) {
-	return subject && (op + ':' + subject);
 }
 
 function tag_key(tag) {

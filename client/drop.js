@@ -2,10 +2,8 @@
  File drag and drop uploads
  */
 
-var $ = require('jquery'),
-	etc = require('./etc'),
-	main = require('./main'),
-	state = main.state;
+let main = require('./main'),
+	{$, etc, state} = main;
 
 function dragonDrop(e) {
 	e.stopPropagation();
@@ -15,7 +13,7 @@ function dragonDrop(e) {
 		return;
 	var postForm = main.request('postForm');
 	if (!postForm) {
-		main.command('scroll:follow', function() {
+		main.follow(function() {
 			const thread = state.page.get('thread');
 			if (thread)
 				return main.command('openPostBox', thread);
@@ -76,6 +74,6 @@ function setupUploadDrop(e) {
 	go('drop', dragonDrop);
 }
 
-$(function () {
-	setupUploadDrop(main.$threads[0]);
-});
+if (!main.isMobile)
+	main.defer(() => setupUploadDrop(main.$threads[0]));
+

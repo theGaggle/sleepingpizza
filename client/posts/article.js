@@ -1,19 +1,14 @@
 /*
- * Non-OP posts
+ * Reply posts
  */
-'use strict';
 
-var $ = require('jquery'),
-	_ = require('underscore'),
-	Backbone = require('backbone'),
-	main = require('../main'),
-	options = require('../options'),
+let main = require('../main'),
 	postCommon = require('./common'),
-	state = require('../state');
+	{$, _, Backbone, options, state} = main;
 
 var Article = module.exports = Backbone.View.extend({
 	tagName: 'article',
-	initialize: function() {
+	initialize() {
 		/*
 		 * XXX: A bit ineficient, because first an empty element is renderred
 		 * and then a proper one.
@@ -22,26 +17,22 @@ var Article = module.exports = Backbone.View.extend({
 		 */
 		if (!this.el.innerHTML)
 			this.render().insertIntoDOM();
-		this.listenTo(this.model, {
-			'change:editing': this.renderEditing,
-			remove: this.remove
-		});
 		this.initCommon();
 	},
-	render: function() {
+	render() {
 		// Pass this model's links to oneeSama for renderring
 		main.oneeSama.links = this.model.get('links');
-		this.setElement(main.oneeSama.mono(this.model.attributes));
+		this.setElement(main.oneeSama.article(this.model.attributes));
 		return this;
 	},
-	insertIntoDOM: function() {
+	insertIntoDOM() {
 		main.$threads.children('#' + this.model.get('op'))
 			.children('blockquote, .omit, form, article[id]:last')
 			.last()
 			.after(this.$el);
 		this.autoExpandImage();
 	},
-	renderEditing: function(model, editing) {
+	renderEditing(model, editing) {
 		this.$el.toggleClass('editing', !!editing);
 		if (!editing)
 			this.$el.children('blockquote')[0].normalize();

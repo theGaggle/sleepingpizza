@@ -9,7 +9,6 @@ this.hot = {
 		moe: "/moe/ - Sweets",
 		gar: "/gar/ - Hard Work &amp; Guts",
 		meta: "/meta/ - The Abyss",
-		archive: "/archive/",
 		graveyard: "/graveyard/",
 		staff: "/staff/"
 	},
@@ -18,10 +17,14 @@ this.hot = {
 		moe: 'moe',
 		gar: 'gar',
 		meta: 'mawaru',
-		archive: 'archive',
 		graveyard: 'mawaru',
 		staff: 'moe'
 	},
+/*
+ * File names of the images to use as banners inside the ./www/banners
+ * Example: ['banner01.png', 'banner02.gif', 'banner03.jpg'] or null
+ */
+	BANNERS: null,
 
 	THREADS_PER_PAGE: 10,
 // Replies to display under each thread on the board's root page

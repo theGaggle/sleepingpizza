@@ -2,10 +2,8 @@
  * Various page scrolling logic
  */
 
-let $ = require('jquery'),
-    Backbone = require('backbone'),
-    main = require('./main'),
-    state = main.state;
+let main = require('./main'),
+	{$, Backbone, state} = main;
 
 const PAGE_BOTTOM = -1;
 
@@ -82,6 +80,8 @@ function followLock(func) {
 	return ret;
 }
 main.comply('scroll:follow', followLock);
+// Shorthand; we use this a lot
+main.follow = main.command.bind(main, 'scroll:follow');
 
 //Check if user scrolled to the bottom every time they scroll
 function scroll_shita() {

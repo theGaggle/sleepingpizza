@@ -20,8 +20,6 @@ class Render {
 		this.resp =resp;
 		this.req = req;
 		this.parseRequest();
-		// Templates are generated one per language and cached
-		this.tmpl = RES['indexTmpl-' + this.lang];
 		this.readOnly = config.READ_ONLY
 			|| config.READ_ONLY_BOARDS.indexOf(opts.board) >= 0;
 		opts.ident = req.ident;
@@ -49,32 +47,29 @@ class Render {
 	}
 	// Configure rendering singleton
 	initOneeSama() {
-		const ident = this.req.ident;
-		let oneeSama = new common.OneeSama(function(num) {
+		const ident = this.req.ident,
+			cookies = this.req.cookies;
+		let oneeSama = new common.OneeSama({
+			spoilToggle: cookies.spoil === 'true',
+			autoGif: cookies.agif === 'true',
+			eLinkify: cookies.linkify === 'true',
+			lang: lang[this.lang].common,
 
 			// Post link handler
-			const op = db.OPs[num];
-			if (op && caps.can_access_thread(ident, op))
-				this.callback(this.post_ref(num, op));
-			else
-				this.callback('>>' + num);
+			tamashii(num) {
+				const op = db.OPs[num];
+				if (op && caps.can_access_thread(ident, op))
+					this.callback(this.postRef(num, op));
+				else
+					this.callback('>>' + num);
+			}
 		});
-		const cookies = this.req.cookies;
-		oneeSama.tz_offset = this.req.tz_offset;
+
 		// Add mnemonics for authenticated staff
 		caps.augment_oneesama(oneeSama, this.opts);
 
-		if (cookies.spoil === 'true')
-			oneeSama.spoilToggle = true;
-		if (cookies.agif === 'true')
-			oneeSama.autoGif = true;
-		if (cookies.rTime === 'true')
-			oneeSama.rTime = true;
-		if (cookies.linkify === 'true')
-			oneeSama.eLinkify = true;
 		if (common.thumbStyles.indexOf(cookies.thumb) >= 0)
 			oneeSama.thumbStyle = cookies.thumb;
-		oneeSama.lang = lang[this.lang].common;
 		let lastN = cookies.lastn && parseInt(cookies.lastn, 10);
 		if (!lastN || !common.reasonable_last_n(lastN))
 			lastN = STATE.hot.THREAD_LAST_N;
@@ -102,7 +97,7 @@ class Render {
 
 		// <head> and other prerendered static HTML
 		if (this.full)
-			resp.write(this.tmpl[0]);
+			resp.write(this.templateTop());
 		if (opts.catalog)
 			this.boardTitle().catalogTop();
 		else if (opts.isThread)
@@ -116,6 +111,11 @@ class Render {
 			resp.write(this.oneeSama.newThreadBox());
 		if (opts.catalog)
 			resp.write('<div id="catalog">');
+	}
+	templateTop() {
+		// Templates are generated one per language and cached
+		const tmpl = this.tmpl = RES['indexTmpl-' + this.lang];
+		return tmpl[0] + this.imageBanner() + tmpl[1];
 	}
 	onBottom() {
 		let resp = this.resp;
@@ -165,18 +165,18 @@ class Render {
 			safe(oneeSama.thumbnail(image, data.num)),
 			safe(parseHTML
 				`<br>
-				<small title="${lang[this.lang].catalog_omit}">
-					${data.replyctr}/${data.imgctr - 1}~
-				</small>
 				<small>
-					${oneeSama.expansion_links_html(data.num)}
+					<span title="${lang[this.lang].catalog_omit}">
+						${data.replyctr}/${data.imgctr - 1}~
+					</span>
+					${oneeSama.expansionLinks(data.num)}
 				</small>
 				<br>`
 			)
 		);
 		if (data.subject)
 			html.push(safe('<h3>「'), data.subject, safe('」</h3>'));
-		html.push(oneeSama.karada(data.body), safe('</article>'));
+		html.push(oneeSama.body(data.body), safe('</article>'));
 		this.resp.write(common.join(html));
 	}
 	writeThread(post) {
@@ -186,11 +186,13 @@ class Render {
 		const opts = this.opts,
 			full = oneeSama.full = !!opts.fullPosts;
 		oneeSama.op = opts.fullLinks ? false : post.num;
-		let first = oneeSama.monomono(post, full && 'full');
+		let first = oneeSama.section(post, full && 'full');
 		first.pop();
 		this.resp.write(first.join(''));
 	}
-	onThreadEnd() {
+	onThreadEnd(num) {
+		if (this.hidden.has(num))
+			return;
 		let resp = this.resp;
 		if (!this.readOnly)
 			resp.write(this.oneeSama.replyBox());
@@ -202,7 +204,7 @@ class Render {
 			return;
 		let posts = this.posts;
 		posts[post.num] = post;
-		this.resp.write(this.oneeSama.mono(post));
+		this.resp.write(this.oneeSama.article(post));
 	}
 	threadTitle() {
 		let title = `/${escape(this.opts.board)}/ - `;
@@ -212,26 +214,22 @@ class Render {
 			title += `${escape(subject)} (#${op})`;
 		else
 			title += `#${op}`;
-		this.resp.write(`<h1>${this.imageBanner()}${title}</h1>`);
+		this.resp.write(`<h1>${title}</h1>`);
 		this.title = title;
 		return this;
 	}
 	boardTitle() {
 		const board = this.opts.board,
 			title = STATE.hot.TITLES[board] || escape(board);
-		this.resp.write(`<h1>${this.imageBanner()}${title}</h1>`);
+		this.resp.write(`<h1>${title}</h1>`);
 		this.title = title;
 		return this;
 	}
 	imageBanner() {
-		const banners = config.BANNERS;
+		const banners = STATE.hot.BANNERS;
 		if (!banners)
 			return '';
-		return parseHTML
-			`<img id="imgBanner"
-				src="${config.MEDIA_URL}banners/${common.random(banners)}"
-			>
-			<br>`;
+		return `<img src="${config.MEDIA_URL}banners/${common.random(banners)}">`;
 	}
 	catalogTop() {
 		const pag = this.oneeSama.asideLink('return', '.', 'compact', 'history');
@@ -260,10 +258,6 @@ class Render {
 		let start = 0,
 			end = nav.pages,
 			step = 1;
-		if (nav.ascending) {
-			start = end - 1;
-			end = step = -1;
-		}
 		for (let i = start; i != end; i += step) {
 			if (i != cur)
 				bits += `<a href="page${i}" class="history">${i}</a>`;
@@ -289,7 +283,7 @@ class Render {
 	// <script> tags
 	pageEnd() {
 		let resp = this.resp;
-		resp.write(this.tmpl[1]);
+		resp.write(this.tmpl[2]);
 		const ident = this.req.ident;
 		if (ident) {
 			if (caps.can_administrate(ident))

@@ -74,7 +74,7 @@ router.get(/^\/(\w+)\/(catalog)?$/,
 			live: true,
 			catalog: opts.catalog
 		});
-		yaku.emit('top', page_nav(opts.thread_count, -1, board === 'archive'));
+		yaku.emit('top', page_nav(opts.thread_count, -1));
 		yaku.once('error', function(err) {
 			winston.error('index:' + err);
 			next();
@@ -97,7 +97,7 @@ router.get(/^\/(\w+)\/page(\d+)$/,
 
 		// The page might be gone, becaue a thread was deleted
 		yaku.once('nomatch', function() {
-			res.status(302).redirect('.');
+			res.redirect('.');
 			yaku.disconnect();
 		});
 		yaku.once('begin', function(threadCount, postCount) {
@@ -124,7 +124,7 @@ router.get(/^\/(\w+)\/page(\d+)$/,
 			isThread: false
 		});
 		yaku.emit('top',
-			page_nav(opts.threadCount, page, board === 'archive')
+			page_nav(opts.threadCount, page)
 		);
 		yaku.once('end', function() {
 			yaku.emit('bottom');
@@ -162,7 +162,7 @@ router.get(/^\/(\w+)\/(\d+)/,
 				if (tag) {
 					if (!caps.can_access_board(ident, tag))
 						return res.sendStatus(404);
-					return redirect_thread(res, num, op, tag);
+					return redirect_thread(res, num, op, tag, req.url);
 				}
 				else {
 					winston.warn(`Orphaned post ${num} with tagless OP ${op}`);
@@ -281,12 +281,17 @@ function buildEtag(req, res, ctr, extra) {
 
 function parseCookies(req, ctr) {
 	const cookies = req.cookies,
-		thumb = cookies.thumb,
-		styles = common.thumbStyles,
 		lang = req.lang = config.LANGS.indexOf(cookies.lang) > -1
 			? cookies.lang : config.DEFAULT_LANG;
+
+	// Round counter to lowest 10 updates for better caching
+	ctr = Math.floor(ctr / 10) * 10;
 	let etag = `W/${ctr}-${RES['indexHash-' + lang]}-${lang}`;
-	etag += '-' + (styles.indexOf(thumb) >= 0 && thumb || styles[0]);
+	// Since we use image lazy loading, only the `hide` thumbnail style
+	// matters, as that has considerebaly different figcaption HTLM. Less
+	// reflows is good.
+	if (cookies.thumb === 'hide')
+		etag += '-hide';
 	const etags = ['spoil', 'agif', 'rtime', 'linkify'];
 	for (let i = 0, l = etags.length; i < l; i++) {
 		const tag = etags[i];
@@ -303,24 +308,26 @@ function finish(req, res) {
 }
 
 // Pack page navigation data in an object for easier passing downstream
-function page_nav(thread_count, cur_page, ascending) {
-	const page_count = Math.max(
-		Math.ceil(thread_count / state.hot.THREADS_PER_PAGE)
-	);
+function page_nav(threads, cur_page) {
 	return {
-		pages: page_count,
-		threads: thread_count,
-		cur_page: cur_page,
-		ascending: ascending
+		pages: Math.max(Math.ceil(threads / state.hot.THREADS_PER_PAGE)),
+		threads,
+		cur_page
 	};
 }
 
 // Redirects '/board/num', when num point to a reply, not a thread
-function redirect_thread(res, num, op, tag) {
-	if (!tag)
-		res.redirect(301, `./${op}#${num}`);
-	else
-		res.redirect(301, `../${tag}/${op}#${num}`);
+function redirect_thread(res, num, op, tag, url) {
+	let path = tag ? `../${tag}/${op}` : `./${op}`;
+
+	// Reapply query strings, so we don't screw up the History API by
+	// retrieving a full page
+	const query = url && url.split('?')[1];
+	if (query)
+		path += '?' + query;
+	path += '#' + num;
+	
+	res.redirect(path);
 }
 
 function detect_last_n(query) {

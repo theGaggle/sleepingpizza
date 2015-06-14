@@ -1,45 +1,9 @@
-var $ = require('jquery'),
-	Backbone = require('backbone'),
-	common = require('../common'),
-	main = require('./main'),
-	options = require('./options');
+/*
+Timezone corrections, batch timestamp updates, syncwatch, etc.
+ */
 
-function date_from_time_el(el) {
-	if (!el)
-		return new Date();
-	const dTime = el.getAttribute('datetime');
-	// Don't crash the function, if scanning an unsynced post in progress
-	if (!dTime)
-		return new Date();
-	return new Date(dTime
-		.replace(/-/g, '/')
-		.replace('T', ' ')
-		.replace('Z', ' GMT')
-	);
-}
-main.reply('time:fromEl', date_from_time_el);
-
-const is_skewed = (function(){
-	var el = document.querySelector('time');
-	if (!el)
-		return false;
-	var d = date_from_time_el(el);
-	return main.oneeSama.readable_time(d.getTime()) != el.innerHTML;
-})();
-
-if (is_skewed) {
-	// Rerender all post times
-	if (!main.oneeSama.rTime)
-		options.trigger('change:relativeTime', null, false);
-
-	setTimeout(function () {
-		// next request, have the server render the right times
-		$.cookie('timezone', -new Date().getTimezoneOffset() / 60, {
-			expires: 90,
-			path: '/'
-		});
-	}, 3000);
-}
+let main = require('./main'),
+	{$, Backbone, common, oneeSama, options, state} = main;
 
 // Get a more accurate server-client time offset, for interclient syncing
 // Does not account for latency, but good enough for our purposes
@@ -47,9 +11,23 @@ var serverTimeOffset = 0;
 main.dispatcher[common.GET_TIME] = function(msg){
 	if (!msg[0])
 		return;
-	serverTimeOffset = msg[0] - new Date().getTime();
+	serverTimeOffset = msg[0] - Date.now();
 };
 main.reply('time:offset', serverTimeOffset);
+
+let renderTimer;
+function batcTimeRender(model, rtime = options.get('relativeTime')) {
+	let models = state.posts.models;
+	for (let i = 0, l = models.length; i < l; i++) {
+		models[i].dispatch('renderTime')
+	}
+	if (renderTimer)
+		clearTimeout(renderTimer);
+	if (rtime)
+		renderTimer = setTimeout(batcTimeRender, 60000)
+}
+main.comply('time:render', batcTimeRender);
+options.on('change:relativeTime', batcTimeRender);
 
 /* syncwatch */
 function timer_from_el($el) {
@@ -98,33 +76,27 @@ function mouikkai() {
 	}, 1000);
 }
 
-main.defer(mouikkai)
+main.defer(batcTimeRender)
+	.defer(mouikkai)
 	.defer(function() {
 		// Append UTC clock to the top of the schedule
-		var seconds;
-		var $el = $(common.parseHTML
-			`<span id="UTCClock" title="Click to show seconds">
-				<b></b><hr>
-			</span>`
-		)
-			.prependTo('#schedule')
-			// Append seconds and render clock every second, if clicked
-			.one('click', function() {
-				seconds = true;
-				this.removeAttribute('title');
-				render();
-			});
-		$el = $el.find('b');
+		let seconds;
+		let el = document.getElementById('UTCClock').firstChild;
+		el.addEventListener('click', handler);
+
+		function handler() {
+			seconds = true;
+			this.removeAttribute('title');
+			this.style.cursor = 'default';
+			this.removeEventListener('click', handler);
+			render();
+		}
 
 		function render() {
 			if (!serverTimeOffset)
 				return setTimeout(render, 1000);
-			var d = new Date(common.serverTime()),
-				html = main.oneeSama.readable_time(d);
-			if (seconds)
-				html += ':' + common.pad(d.getUTCSeconds());
-			html += ' UTC';
-			$el.html(html);
+			el.innerHTML = oneeSama
+				.readableUTCTime(new Date(common.serverTime()), seconds);
 			setTimeout(render, seconds ? 1000 : 60000);
 		}
 

@@ -2,13 +2,8 @@
  * Thumbnail and image renderring
  */
 
-'use strict';
-
-let $ = require('jquery'),
-	Backbone = require('backbone'),
-	main = require('../main'),
-	common = main.common,
-	options = main.options;
+let main = require('../main'),
+	{$, Backbone, common, etc, oneeSama, options, state} = main;
 
 let Hidamari = exports.Hidamari = {
 	/*
@@ -16,7 +11,7 @@ let Hidamari = exports.Hidamari = {
 	 overhed, but the alternative is very convoluted logic. I don't really want
 	 to attach a FSM to each view, just for image renderring.
 	 */
-	renderImage: function(arg, image) {
+	renderImage(arg, image) {
 		/*
 		 All kinds of listeners call this method, so we need to ensure we
 		 always get the appropriate image object.
@@ -31,7 +26,7 @@ let Hidamari = exports.Hidamari = {
 		this.$el
 			.children('header')
 			[this.model.get('op') ? 'after' : 'before'](
-				common.join(main.oneeSama.gazou(image, reveal))
+				oneeSama.image(image, reveal)
 			);
 		this.model.set({
 			// Only used in hidden thumbnail mode
@@ -39,8 +34,7 @@ let Hidamari = exports.Hidamari = {
 			imageExpanded: false
 		});
 	},
-
-	autoExpandImage: function() {
+	autoExpandImage() {
 		const img = this.model.get('image');
 		if (!img
 			|| !massExpander.get('expand')
@@ -50,48 +44,24 @@ let Hidamari = exports.Hidamari = {
 			return;
 		this.toggleImageExpansion(true, img);
 	},
-
-	renderSpoiler: function(spoiler) {
-		let img = this.model.get('image');
-		img.spoiler = spoiler;
-		this.renderImage(img);
-	},
-
-	toggleSpoiler: function() {
-		const img = this.model.get('image');
-		if (!img || !img.spoiler)
-			return;
-		this.renderImage(img);
-	},
-
-	// Toggle animated GIF thumbnails
-	toggleAutogif: function() {
-		const img = this.model.get('image');
-		if (!img || img.ext !== '.gif')
-			return;
-		this.renderImage(img);
-	},
-
 	// Reveal/hide thumbnail by clicking [Show]/[Hide] in hidden thumbnail mode
-	toggleThumbnailVisibility: function(e) {
+	toggleThumbnailVisibility(e) {
 		e.preventDefault();
-		main.command('scroll:follow', ()=>
+		main.follow(() =>
 			this.renderImage(!this.model.get('thumbnailRevealed'))
 		);
 	},
-
-	imageClicked: function(e){
+	imageClicked(e){
 		if (options.get('inlinefit') == 'none' || e.which !== 1)
 			return;
 		// Remove image hover preview, if any
 		options.trigger('imageClicked');
 		e.preventDefault();
-		main.command('scroll:follow', ()=>
+		main.follow(() =>
 			this.toggleImageExpansion(!this.model.get('imageExpanded'))
 		);
 	},
-
-	toggleImageExpansion: function(expand, img = this.model.get('image')) {
+	toggleImageExpansion(expand, img = this.model.get('image')) {
 		const fit = options.get('inlinefit');
 		if (!img || fit === 'none')
 			return;
@@ -100,11 +70,10 @@ let Hidamari = exports.Hidamari = {
 		else
 			this.renderImage(null, img);
 	},
-
-	fitImage: function(img, fit){
+	fitImage(img, fit){
 		// Open PDF in a new tab on click
 		if (img.ext === '.pdf')
-			return window.open(main.oneeSama.imagePaths().src + img.src,
+			return window.open(oneeSama.imagePaths().src + img.src,
 				'_blank'
 			);
 		// Audio controls are always the same height and do not need to be
@@ -160,15 +129,14 @@ let Hidamari = exports.Hidamari = {
 			fullWidth: fullWidth && !fullHeight
 		});
 	},
-
-	expandImage: function(img, opts) {
+	expandImage(img, opts) {
 		const tag = (img.ext === '.webm') ? 'video' : 'img';
 		this.$el
 			.children('figure')
 			.children('a')
 			.html(common.parseHTML
 				`<${tag}~
-					src="${main.oneeSama.imagePaths().src + img.src}"
+					src="${oneeSama.imagePaths().src + img.src}"
 					width="${opts.width}"
 					height="${opts.height}"
 					autoplay="true"
@@ -178,14 +146,12 @@ let Hidamari = exports.Hidamari = {
 			);
 		this.model.set('imageExpanded', true);
 	},
-
-	renderAudio: function(img) {
+	renderAudio(img) {
 		this.$el
 			.children('figure')
 			.children('a')
 			.append(common.parseHTML
-				`<audio
-					src="${main.oneeSama.imagePaths().src + img.src}"
+				`<audio src="${oneeSama.imagePaths().src + img.src}"
 					width="300"
 					height="3em"
 					autoplay="true"
@@ -195,28 +161,63 @@ let Hidamari = exports.Hidamari = {
 				</audio>`
 			);
 		this.model.set('imageExpanded', true);
+	},
+	// Minimal image thumbnail swap for lazy loading
+	loadImage(image) {
+		let el = this.el
+			.getElementsByTagName('figure')[0]
+			.getElementsByTagName('img')[0];
+		el.outerHTML = oneeSama.thumbnail(image);
 	}
 };
 
 // Expand all images
 let ExpanderModel = Backbone.Model.extend({
 	id: 'massExpander',
-
-	initialize: function() {
+	initialize() {
 		main.$threads.on('click', '#expandImages', (e) => {
 			e.preventDefault();
 			this.toggle();
 		});
 	},
-
-	toggle: function() {
+	toggle() {
 		const expand = !this.get('expand');
-		this.set('expand', expand);
+		this.set('expand', expand).massToggle(expand);
 		main.$threads
 			.find('#expandImages')
 			.text(`${expand ? 'Contract' : 'Expand'} Images`);
+	},
+	// More efficent than individual listeners
+	massToggle(expand) {
+		const fit = options.get('inlinefit');
+		if (fit === 'none')
+			return;
+		let models = state.posts.models;
+		for (let i = 0, l = models.length; i < l; i++) {
+			let model = models[i],
+				img = model.get('image');
+			if (!img)
+				continue;
+			if (expand)
+				model.dispatch('fitImage', img, fit);
+			else
+				model.dispatch('renderImage', null, img);
+		}
 	}
 });
 
 let massExpander = exports.massExpander = new ExpanderModel();
 main.comply('massExpander:unset', () => massExpander.unset());
+
+// Lazy load images with less UI locking
+function loadImages() {
+	if (options.get('thumbs') === 'hide')
+		return;
+	etc.defferLoop(state.posts.models, function(model) {
+		const image = model.get('image');
+		if (!image)
+			return;
+		model.dispatch('loadImage', image);
+	})
+}
+main.comply('imager:lazyLoad', loadImages);

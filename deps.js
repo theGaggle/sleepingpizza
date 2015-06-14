@@ -10,7 +10,6 @@ module.exports = {
 		'admin',
 		'config',
 		'imager',
-		'lang',
 		'server',
 		'util',
 		'db.js'
@@ -27,6 +26,9 @@ module.exports = {
 	client: [
 		'client'
 	],
+	get legacy() {
+		return this.client;
+	},
 	css: [
 		'less'
 	]

@@ -45,16 +45,19 @@ article {
 		background-size: 35px 70px;
 		pointer-events: none;
 	}
-  small {
-	 padding-top: 0.5em;
-  }
+	small {
+		padding-top: 0.5em;
+	}
 }
 small {
-  clear: left;
-  display: block;
-}
-section > small {
-  padding-bottom: 0.5em;
+	clear: left;
+	display: block;
+	&:empty {
+		display: none;
+	}
+	section > & {
+		padding-bottom: 0.5em;
+	}
 }
 a.disabled {
   pointer-events: none;
@@ -125,9 +128,20 @@ figure {
 .fullWidth {
 	margin-right: 0;
 }
+// Can't have conditional CSS, so we use a spacing div to avoid JS
+#headerTopMargin {
+	width: 100%;
+	height: 1em;
+}
 h1 {
-	margin-top: 1em;
-	margin-bottom: 0.5em;
+	// Need different margins for when we have an image banner and don't
+	margin-top: 0;
+	body > & {
+		margin-bottom: 0;
+	}
+	threads > & {
+		margin-bottom: 0.5em;
+	}
 }
 h1, h2 {
 	text-align: center;
@@ -171,9 +185,12 @@ header {
 	nav a {
 		text-decoration: none;
 	}
-}
-.preview header {
-	background-image: none;
+	.preview & {
+		background-image: none;
+	}
+	.expansionLinks {
+		margin-left: 1em;
+	}
 }
 hr {
 	border: none;
@@ -373,8 +390,8 @@ span.control .popup-menu {
 }
 #UTCClock {
 	text-align: center;
-	cursor: pointer;
 	b {
+		cursor: pointer;
 		display: block;
 	}
 }

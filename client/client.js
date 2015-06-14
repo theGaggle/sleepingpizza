@@ -1,20 +1,13 @@
 /*
  * Handles the brunt of the post-related websocket calls
  */
-'use strict';
 
-var $ = require('jquery'),
-	common = require('../common'),
-	main = require('./main'),
-	posts = require('./posts'),
-	state = require('./state');
-
-// The actual object of handler functions for websocket calls
-var dispatcher = main.dispatcher;
+let main = require('./main'),
+	{$, common, dispatcher, posts, state} = main;
 
 dispatcher[common.INSERT_POST] = function(msg) {
-	// TODO: msg[0] is legacy. Could use a fix after we shift in the new client
-	msg = msg[1];
+	let bump = msg[1] && state.page.get('live');
+	msg = msg[0];
 	const isThread = !msg.op;
 	if (isThread)
 		state.syncs[msg.num] = 1;
@@ -25,7 +18,6 @@ dispatcher[common.INSERT_POST] = function(msg) {
 	const nonce = msg.nonce;
 	delete msg.nonce;
 	const myNonce = main.request('nonce:get')[nonce];
-	var bump = state.page.get('live');
 	if (myNonce && myNonce.tab === state.page.get('tabID')) {
 		// posted in this tab; transform placeholder
 		state.ownPosts[msg.num] = true;
@@ -51,43 +43,38 @@ dispatcher[common.INSERT_POST] = function(msg) {
 		model: model,
 		id: msg.num,
 		el: el
-	});
+	})
+		.clientInit();
+
 	main.command('post:inserted', model);
 
 	if (isThread)
 		return;
-	var parent = state.posts.get(msg.op);
+	let parent = state.posts.get(msg.op);
 	if (!parent)
 		return;
 	parent.get('replies').push(msg.num);
-	parent.trigger('shiftReplies');
+	if (state.page.get('thread'))
+		return;
+	parent.dispatch('shiftReplies');
 	// Bump thread to page top
-	if (!common.is_sage(msg.email) && bump)
-		parent.trigger('bump');
-};
-
-// Move thread to the archive board
-dispatcher[common.MOVE_THREAD] = function(msg) {
-	msg = msg[0];
-	var model = new posts.ThreadModel(msg);
-	main.oneeSama.links = msg.links;
-	new posts.Section({
-		model: model,
-		id: msg.num
-	});
+	if (bump)
+		parent.dispatch('bumpThread');
 };
 
 dispatcher[common.INSERT_IMAGE] = function(msg) {
-	let model = state.posts.get(msg[0]);
+	const num = msg[0];
+	let model = state.posts.get(num);
 	// Did I just upload this?
-	let postModel = main.request('postModel');
-	if (postModel && postModel.get('num') == msg[0]) {
-		if (model)
-			model.set('image', msg[1], {silent: true});
-		main.request('postForm').insertUploaded(msg[1]);
-	}
-	else if (model)
-		model.set('image', msg[1]);
+	let postModel = main.request('postModel'),
+		img = msg[1];
+	const toPostForm = postModel && postModel.get('num') == num;
+	if (toPostForm)
+		main.request('postForm').insertUploaded(img);
+	// If the image gets inseted into the postForm, we don't need the
+	// generic model to fire a separate image render
+	if (model)
+		model.setImage(img, toPostForm);
 };
 
 dispatcher[common.UPDATE_POST] = function(msg) {
@@ -117,7 +104,7 @@ dispatcher[common.UPDATE_POST] = function(msg) {
 
 	if (!model)
 		return;
-	model.trigger('updateBody', {
+	model.dispatch('updateBody', {
 		dice: extra && extra.dice,
 		links: links || {},
 		state: msgState,
@@ -125,20 +112,15 @@ dispatcher[common.UPDATE_POST] = function(msg) {
 	});
 };
 
-// Make the text spoilers toggle revealing on click
-main.$doc.on('click', 'del', function (event) {
-	if (!event.spoilt) {
-		event.spoilt = true;
-		$(event.target).toggleClass('reveal');
-	}
-});
-
 dispatcher[common.FINISH_POST] = function(msg) {
 	const num = msg[0];
 	delete state.ownPosts[num];
 	var model = state.posts.get(num);
-	if (model)
+	if (model) {
+		// No change event listener to avoid extra overhead
 		model.set('editing', false);
+		model.dispatch('renderEditing', false);
+	}
 };
 
 dispatcher[common.DELETE_POSTS] = function(msg) {
@@ -146,8 +128,6 @@ dispatcher[common.DELETE_POSTS] = function(msg) {
 		let model = state.posts.get(msg[i]);
 		if (model)
 			model.remove();
-
-		// TODO: Free up post focus, if any
 	}
 };
 
@@ -170,30 +150,32 @@ dispatcher[common.DELETE_THREAD] = function(msg, op) {
 };
 
 dispatcher[common.LOCK_THREAD] = function(msg, op) {
-	var model = state.posts.get(op);
+	let model = state.posts.get(op);
 	if (model)
-		model.set('locked', true);
+		model.toggleLocked(true);
 };
 
 dispatcher[common.UNLOCK_THREAD] = function(msg, op) {
-	var model = state.posts.get(op);
+	let model = state.posts.get(op);
 	if (model)
-		model.set('locked', false);
+		model.toggleLocked(false);
 };
 
 dispatcher[common.DELETE_IMAGES] = function(msg) {
 	for (let i = 0, lim = msg.length; i < lim; i++) {
 		let model = state.posts.get(msg[i]);
 		if (model)
-			model.unset('image');
+			model.removeImage();
 	}
 };
 
 dispatcher[common.SPOILER_IMAGES] = function(msg) {
 	for (let i = 0, lim = msg.length; i < lim; i++) {
-		var model = state.posts.get(msg[i][0]);
-		if (model)
-			model.trigger('spoiler',msg[i][1]);
+		const spoiler = msg[i];
+		let model = state.posts.get(spoiler[0]);
+		if (!model)
+			continue;
+		model.setSpoiler(spoiler[1]);
 	}
 };
 
@@ -216,6 +198,14 @@ dispatcher[common.HOT_INJECTION] = function(msg){
 	}
 };
 
+// Make the text spoilers toggle revealing on click
+main.$doc.on('click', 'del', function (event) {
+	if (!event.spoilt) {
+		event.spoilt = true;
+		$(event.target).toggleClass('reveal');
+	}
+});
+
 /*
  * TODO: These are used only for the Admin panel. Would be nice, if we could
  * set those in admin/client.js. Would need to export main.js outside the bundle
@@ -224,9 +214,3 @@ dispatcher[common.HOT_INJECTION] = function(msg){
 dispatcher[common.MODEL_SET] = function (msg, op) {};
 dispatcher[common.COLLECTION_RESET] = function (msg, op) {};
 dispatcher[common.COLLECTION_ADD] = function (msg, op) {};
-
-// Include other additional modules
-require('./amusement');
-
-// Connect to the server
-require('./connection');
