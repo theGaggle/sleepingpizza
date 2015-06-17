@@ -4,16 +4,9 @@
 
 let main = require('../main'),
 	imager = require('./imager'),
-	Menu = require('./menu'),
 	{$, _, common, lang, oneeSama, options, state} = main;
 
 module.exports = {
-	events: {
-		'click >figure>figcaption>.imageToggle': 'toggleThumbnailVisibility',
-		'click >figure>a': 'imageClicked',
-		'click >header>nav>a.quote': 'quotePost',
-		'click >header>.control': 'renderMenu'
-	},
 	initCommon() {
 		this.$blockquote = this.$el.children('blockquote');
 		this
@@ -99,12 +92,6 @@ module.exports = {
 		}
 		main.follow(() => this.backlinks.innerHTML = html);
 	},
-	renderMenu(e) {
-		new Menu({
-			parent: e.target,
-			model: this.model
-		});
-	},
 	// Admin JS injections
 	fun() {
 		// Fun goes here
@@ -120,33 +107,6 @@ module.exports = {
 		this.el
 			.getElementsByClassName('name')[0]
 			.outerHTML = oneeSama.name(this.model.attributes);
-	},
-	quotePost(e) {
-		e.preventDefault();
-
-		// TODO: Set highlighted post
-
-		/*
-		 Make sure the selection both starts and ends in the quoted post's
-		 blockquote
-		 */
-		var sel,
-			$post = this.$el,
-			gsel = getSelection();
-		const num = this.model.get('num');
-
-		function isInside(p) {
-			var $el = $(gsel[p] && gsel[p].parentElement);
-			return $el.closest('blockquote').length
-				&& $el.closest('article, section').is($post);
-		}
-
-		if (isInside('baseNode') && isInside('focusNode'))
-			sel = gsel.toString();
-		main.follow(function() {
-			main.command('openPostBox', num);
-			main.request('postForm').addReference(num, sel);
-		});
 	}
 };
 

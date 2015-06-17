@@ -3,7 +3,7 @@
  */
 
 let main = require('../main'),
-	{$, Backbone, common, etc, oneeSama, options, state} = main;
+	{$, $threads, Backbone, common, etc, oneeSama, options, state} = main;
 
 let Hidamari = exports.Hidamari = {
 	/*
@@ -11,27 +11,35 @@ let Hidamari = exports.Hidamari = {
 	 overhed, but the alternative is very convoluted logic. I don't really want
 	 to attach a FSM to each view, just for image renderring.
 	 */
-	renderImage(arg, image) {
+	renderImage(arg, image, manual) {
 		/*
 		 All kinds of listeners call this method, so we need to ensure we
 		 always get the appropriate image object.
 		 */
 		const reveal = arg === true;
+		let model = this.model,
+			$el = this.$el;
 		if (!image || !image.src)
-			image = this.model.get('image');
-		this.$el.children('figure').remove();
+			image = model.get('image');
+		$el.children('figure').remove();
 		// Remove image on mod deletion
 		if (!image)
 			return;
-		this.$el
+		$el
 			.children('header')
-			[this.model.get('op') ? 'after' : 'before'](
+			[model.get('op') ? 'after' : 'before'](
 				oneeSama.image(image, reveal)
 			);
-		this.model.set({
+
+		// Scroll the post back into view, if contracting images taller than
+		// the viewport
+		if (manual && model.get('tallImage'))
+			$(window).scrollTop($el.offset().top - $('#banner').height());
+		model.set({
 			// Only used in hidden thumbnail mode
 			thumbnailRevealed: reveal || options.get('thumbs') === 'hidden',
-			imageExpanded: false
+			imageExpanded: false,
+			tallImage: false
 		});
 	},
 	autoExpandImage() {
@@ -44,31 +52,14 @@ let Hidamari = exports.Hidamari = {
 			return;
 		this.toggleImageExpansion(true, img);
 	},
-	// Reveal/hide thumbnail by clicking [Show]/[Hide] in hidden thumbnail mode
-	toggleThumbnailVisibility(e) {
-		e.preventDefault();
-		main.follow(() =>
-			this.renderImage(!this.model.get('thumbnailRevealed'))
-		);
-	},
-	imageClicked(e){
-		if (options.get('inlinefit') == 'none' || e.which !== 1)
-			return;
-		// Remove image hover preview, if any
-		options.trigger('imageClicked');
-		e.preventDefault();
-		main.follow(() =>
-			this.toggleImageExpansion(!this.model.get('imageExpanded'))
-		);
-	},
-	toggleImageExpansion(expand, img = this.model.get('image')) {
+	toggleImageExpansion(expand, img, manual) {
 		const fit = options.get('inlinefit');
 		if (!img || fit === 'none')
 			return;
 		if (expand)
 			this.fitImage(img, fit);
 		else
-			this.renderImage(null, img);
+			this.renderImage(null, img, manual);
 	},
 	fitImage(img, fit){
 		// Open PDF in a new tab on click
@@ -95,8 +86,7 @@ let Hidamari = exports.Hidamari = {
 			aspect = width / height,
 			isArticle = !!this.model.get('op');
 		let fullWidth, fullHeight;
-		if (widthFlag){
-
+		if (widthFlag) {
 			let maxWidth = $(window).width()
 				// We need to go wider
 				- this.$el
@@ -105,21 +95,21 @@ let Hidamari = exports.Hidamari = {
 					.left * (isArticle ? 1 : 2);
 			if (isArticle)
 				maxWidth -= this.$el.outerWidth() - this.$el.width() + 5;
-			if (newWidth > maxWidth){
+			if (newWidth > maxWidth) {
 				newWidth = maxWidth;
 				newHeight = newWidth / aspect;
 				fullWidth = true;
 			}
 		}
-		if (heightFlag){
+		if (heightFlag) {
 			let maxHeight = $(window).height() - $('#banner').outerHeight();
-			if (newHeight > maxHeight){
+			if (newHeight > maxHeight) {
 				newHeight = maxHeight;
 				newWidth = newHeight * aspect;
 				fullHeight = true;
 			}
 		}
-		if (newWidth > 50 && newHeight > 50){
+		if (newWidth > 50 && newHeight > 50) {
 			width = newWidth;
 			height = newHeight;
 		}
@@ -130,12 +120,11 @@ let Hidamari = exports.Hidamari = {
 		});
 	},
 	expandImage(img, opts) {
-		const tag = (img.ext === '.webm') ? 'video' : 'img';
 		this.$el
 			.children('figure')
 			.children('a')
 			.html(common.parseHTML
-				`<${tag}~
+				`<${img.ext === '.webm' ? 'video' : 'img'}~
 					src="${oneeSama.imagePaths().src + img.src}"
 					width="${opts.width}"
 					height="${opts.height}"
@@ -144,7 +133,10 @@ let Hidamari = exports.Hidamari = {
 					class="expanded${opts.fullWidth && ' fullWidth'}"
 				>`
 			);
-		this.model.set('imageExpanded', true);
+		this.model.set({
+			imageExpanded: true,
+			tallImage: opts.height > window.innerHeight
+		});
 	},
 	renderAudio(img) {
 		this.$el
@@ -175,7 +167,7 @@ let Hidamari = exports.Hidamari = {
 let ExpanderModel = Backbone.Model.extend({
 	id: 'massExpander',
 	initialize() {
-		main.$threads.on('click', '#expandImages', (e) => {
+		$threads.on('click', '#expandImages', (e) => {
 			e.preventDefault();
 			this.toggle();
 		});
@@ -183,7 +175,7 @@ let ExpanderModel = Backbone.Model.extend({
 	toggle() {
 		const expand = !this.get('expand');
 		this.set('expand', expand).massToggle(expand);
-		main.$threads
+		$threads
 			.find('#expandImages')
 			.text(`${expand ? 'Contract' : 'Expand'} Images`);
 	},
@@ -213,7 +205,7 @@ main.comply('massExpander:unset', () => massExpander.unset());
 function loadImages() {
 	if (options.get('thumbs') === 'hide')
 		return;
-	etc.defferLoop(state.posts.models, function(model) {
+	etc.deferLoop(state.posts.models, 10, function(model) {
 		const image = model.get('image');
 		if (!image)
 			return;
@@ -221,3 +213,35 @@ function loadImages() {
 	})
 }
 main.comply('imager:lazyLoad', loadImages);
+
+// Proxy image clicks to views. More performant than dedicated listeners for
+// each view.
+$threads.on('click', 'img, video', function(e) {
+	if (options.get('inlinefit') == 'none' || e.which !== 1)
+		return;
+	let model = etc.getModel(e.target);
+	if (!model)
+		return;
+	e.preventDefault();
+	// Remove image hover preview, if any
+	main.command('imager:clicked');
+	main.follow(() =>
+		model.dispatch(
+			'toggleImageExpansion',
+			!model.get('imageExpanded'),
+			model.get('image'),
+			true
+		)
+	);
+});
+
+// Reveal/hide thumbnail by clicking [Show]/[Hide] in hidden thumbnail mode
+$threads.on('click', '.imageToggle', function(e) {
+	e.preventDefault();
+	let model = etc.getModel(e.target);
+	if (!model)
+		return;
+	main.follow(() =>
+		model.dispatch('renderImage', !model.get('thumbnailRevealed'))
+	);
+});

@@ -584,7 +584,7 @@ class OneeSama {
 		else if (data.ext === '.gif' && this.autoGif)
 			thumb = src;
 		else
-			thumb = this.thumbPath(data, this.thumbStyle === 'sharp');
+			thumb = this.thumbPath(data, this.thumbStyle !== 'small');
 
 		// Source image smaller than thumbnail and other fallbacks
 		if (!thumbWidth) {
@@ -594,13 +594,18 @@ class OneeSama {
 
 		// Still resolve the size, but swap the image with a blank PNG for
 		// lazy loading
-		if (imports.isNode)
+		if (imports.isNode && !this.catalog)
 			thumb = paths.blank;
 
 		// Thumbnails on catalog pages do not need hover previews. Adding the
-		// `expanded` class excludes them from the hover handler.
+		// `expanded` class excludes them from the hover handler. The
+		// history class ensures they are handled by the History API.
 		return parseHTML
-			`<a target="blank" rel="nofollow" href="${href || src}">
+			`<a target="_blank"
+				 rel="nofollow"
+				 href="${href || src}"
+				 ${href && 'class="history"'}
+		    >
 				<img src="${thumb}"
 					width="${thumbWidth}"
 					height="${thumbHeight}"
