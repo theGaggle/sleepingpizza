@@ -17,6 +17,8 @@ let $ = require('jquery'),
 
 // Bind jQuery to backbone
 Backbone.$ = $;
+// Load standard library ES6 polyfills
+require('core-js');
 
 // Central aplication object and message bus
 let main = module.exports = radio.channel('main');
@@ -61,7 +63,7 @@ _.extend(main, {
 // Clear cookies, if versions mismatch. Get regenerated each client start
 // anyway.
 // XXX: Does not clear cookies for all paths
-if (localStorage.cookieVersion !== 1) {
+if (localStorage.cookieVersion !== '1') {
 	for (let cookie in Cookie.get()) {
 		Cookie.remove(cookie);
 	}
@@ -94,9 +96,10 @@ let oneeSama = main.oneeSama = new common.OneeSama({
 	// Core post link handler
 	tamashii(num) {
 		let frag;
-		if (this.links && num in this.links) {
+		const op = state.links[num];
+		if (op) {
 			const desc = num in state.mine.readAll() && this.lang.you;
-			frag = this.postRef(num, this.links[num], desc);
+			frag = this.postRef(num, op, desc);
 		}
 		else
 			frag = '>>' + num;
