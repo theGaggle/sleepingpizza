@@ -1,3 +1,9 @@
+/*
+Staff authentication
+ */
+
+'use strict';
+
 var _ = require('underscore'),
     config = require('../config'),
     crypto = require('crypto'),
@@ -77,7 +83,7 @@ function verify_auth(resp, packet) {
 		packet.auth = 'Moderator';
 	else
 		delete packet.auth;
-	exports.set_cookie(resp, packet);
+	set_cookie(resp, packet);
 }
 
 function set_cookie (resp, info) {
@@ -135,28 +141,23 @@ function respond_error(resp, message) {
 }
 
 function respond_ok(resp, cookie) {
-	var headers = {
+	resp.set({
 		'Content-Type': 'application/json',
 		'Set-Cookie': cookie
-	};
-	resp.writeHead(200, headers);
-	resp.end(JSON.stringify({status: 'okay'}));
+	});
+	resp.json({status: 'okay'});
 }
 
 function make_expiry() {
-	var expiry = new Date(Date.now()
-		+ config.LOGIN_SESSION_TIME*1000).toUTCString();
+	const expiry = new Date(Date.now() + config.LOGIN_SESSION_TIME * 1000)
+		.toUTCString();
 	/* Change it to the expected dash-separated format */
-	var m = expiry.match(/^(\w+,\s+\d+)\s+(\w+)\s+(\d+\s+[\d:]+\s+\w+)$/);
-	return m ? m[1] + '-' + m[2] + '-' + m[3] : expiry;
+	const m = expiry.match(/^(\w+,\s+\d+)\s+(\w+)\s+(\d+\s+[\d:]+\s+\w+)$/);
+	return m ? `${m[1]}-${m[2]}-${m[3]}` : expiry;
 }
 
 function make_cookie(key, val) {
-	var header = key + '=' + val + '; Expires=' + make_expiry();
-	var domain = config.LOGIN_COOKIE_DOMAIN;
-	if (domain)
-		header += '; Domain=' + domain;
-	return header;
+	return `${key}=${val}; Expires=${make_expiry()}`;
 }
 
 function random_str() {
