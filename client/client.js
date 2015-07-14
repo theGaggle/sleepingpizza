@@ -52,6 +52,7 @@ dispatcher[common.INSERT_POST] = function(msg) {
 		view.render().insertIntoDOM();
 	view.clientInit();
 
+	checkRepliedToMe(msg.links, num);
 	main.command('post:inserted', model);
 
 	if (isThread)
@@ -67,6 +68,17 @@ dispatcher[common.INSERT_POST] = function(msg) {
 	if (bump)
 		parent.dispatch('bumpThread');
 };
+
+// Check if new posts links to one of my posts
+function checkRepliedToMe(links, sourceNum) {
+	if (!links)
+		return;
+	const mine = state.mine.readAll();
+	for (let num in links) {
+		if (num in mine)
+			main.command('repliedToMe', sourceNum);
+	}
+}
 
 dispatcher[common.INSERT_IMAGE] = function(msg) {
 	const num = msg[0];
@@ -91,8 +103,10 @@ dispatcher[common.UPDATE_POST] = function(msg) {
 	if (!model)
 		return;
 
-	state.addLinks(extra.links);
+	const links = extra.links;
+	state.addLinks(links);
 	model.update(frag, extra);
+	checkRepliedToMe(links, num);
 
 	// Am I updating my own post?
 	if (num in state.ownPosts)
@@ -163,13 +177,11 @@ dispatcher[common.DELETE_IMAGES] = function(msg) {
 	}
 };
 
-dispatcher[common.SPOILER_IMAGES] = function(msg) {
-	for (let i = 0, lim = msg.length; i < lim; i++) {
-		const spoiler = msg[i];
-		let model = state.posts.get(spoiler[0]);
-		if (!model)
-			continue;
-		model.setSpoiler(spoiler[1]);
+dispatcher[common.SPOILER_IMAGES] = function (msg) {
+	for (let i = 0; i < msg.length; i += 2) {
+		let model = state.posts.get(msg[i]);
+		if (model)
+			model.setSpoiler(msg[i + 1]);
 	}
 };
 

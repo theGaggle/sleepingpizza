@@ -161,6 +161,7 @@ class OneeSama {
 	header(data) {
 		return parseHTML
 			`<header>
+				<input type="checkbox" class="postCheckbox">
 				<span class=control></span>
 				${data.subject && `<h3>「${escape(data.subject)}」</h3>`}
 				${this.name(data)}~
@@ -168,14 +169,6 @@ class OneeSama {
 				${this.postNavigation(data)}
 				${!this.full && !data.op && this.expansionLinks(data.num)}
 			</header>`;
-
-		// TODO: Revisit, when we get to moderation.
-		/*
-		 this.trigger('headerFinish', {
-		 header,
-		 data
-		 });
-		 */
 	}
 	name(data) {
 		let html = '';
@@ -193,12 +186,9 @@ class OneeSama {
 		if (email)
 			html += '</a>';
 		html += '</b>';
+		if (data.mnemonic)
+			html += ` <a class="mod addr">${data.mnemonic}</a>`;
 		return html;
-		// TODO: Refactor, when moderation implemented
-		/*this.trigger('headerName', {
-		 header: html,
-		 data
-		 });*/
 	}
 	resolveName(data) {
 		let html = '';
@@ -214,7 +204,7 @@ class OneeSama {
 				html += ' ';
 		}
 		if (trip)
-			html += `<code>'${escape(trip)}</code>`;
+			html += `<code>${escape(trip)}</code>`;
 		if (auth) {
 			const hot = imports.hotConfig;
 			html += ` ## ${auth === 'Admin' ? hot.ADMIN_ALIAS : hot.MOD_ALIAS}`;
@@ -552,8 +542,7 @@ class OneeSama {
 				src: mediaURL + 'src/',
 				thumb: mediaURL + 'thumb/',
 				mid: mediaURL + 'mid/',
-				spoil: mediaURL + 'spoil/spoiler',
-				blank: mediaURL + 'css/ui/blank.png'
+				spoil: mediaURL + 'spoil/spoiler'
 			};
 		}
 		return this._imgPaths;
@@ -605,11 +594,6 @@ class OneeSama {
 			thumbWidth = width;
 			thumbHeight = height;
 		}
-
-		// Still resolve the size, but swap the image with a blank PNG for
-		// lazy loading
-		if (imports.isNode && !this.catalog)
-			thumb = paths.blank;
 
 		// Thumbnails on catalog pages do not need hover previews. Adding the
 		// `expanded` class excludes them from the hover handler. The

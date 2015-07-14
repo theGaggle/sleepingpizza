@@ -1,3 +1,8 @@
+/*
+Manages client read/write permissions
+ */
+'use strict';
+
 var async = require('async'),
     authcommon = require('../admin/common'),
     check = require('./msgcheck').check,
@@ -48,8 +53,6 @@ function dead_media_paths(paths) {
 
 function augment_oneesama (oneeSama, board, ident) {
 	oneeSama.ident = ident;
-	if (can_moderate(ident))
-		oneeSama.hook('headerName', authcommon.append_mnemonic);
 	if (can_administrate(ident))
 		oneeSama.hook('headerName', authcommon.denote_hidden);
 	if (can_administrate(ident) && board == 'graveyard')
@@ -57,24 +60,14 @@ function augment_oneesama (oneeSama, board, ident) {
 }
 exports.augment_oneesama = augment_oneesama;
 
-function mod_handler (func) {
+function modHandler(func) {
 	return function (nums, client) {
-		if (!can_moderate(client.ident))
-			return false;
-		var opts = nums.shift();
-		if (!check({when: 'string'}, opts) || !check('id...', nums))
-			return false;
-		if (!(opts.when in authcommon.delayDurations))
-			return false;
-		var delay = authcommon.delayDurations[opts.when];
-		if (!delay)
-			func(nums, client);
-		else
-			setTimeout(func.bind(null, nums, client), delay*1000);
-		return true;
+		return can_moderate(client.ident)
+			&& check('id...', nums)
+			&& func(nums, client);
 	};
 }
-exports.mod_handler = mod_handler;
+exports.modHandler = modHandler;
 
 function parse_ip(ip) {
 	var m = ip.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)(?:\/(\d+))?$/);

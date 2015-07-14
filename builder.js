@@ -45,7 +45,7 @@ var fullRestart = _.debounce(function() {
 }, 5000);
 
 const serverExclude = new RegExp(
-	String.raw`\.pid$|\.socket|hot.js$|admin\/client.js$|`
+	String.raw`\.pid$|\.socket|hot.js$|`
 		+ config.MEDIA_DIRS.tmp.replace('/', '\\/')
 );
 watch(deps.server, function(file) {

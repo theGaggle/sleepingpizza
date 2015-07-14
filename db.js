@@ -1,7 +1,10 @@
+/*
+Main redis controller module
+ */
+
 'use strict';
 
 let _ = require('underscore'),
-	amusement = require('./server/amusement'),
     async = require('async'),
     cache = require('./server/state').dbCache,
     caps = require('./server/caps'),
@@ -30,6 +33,10 @@ exports.UPKEEP_IDENT = {
 	auth: 'Upkeep',
 	ip: '127.0.0.1'
 };
+
+// Depend on global redis client
+let admin = require('./admin'),
+	amusement = require('./server/amusement');
 
 /* REAL-TIME UPDATES */
 
@@ -137,10 +144,11 @@ class Subscription extends events.EventEmitter {
 		// Just one kind of insertion right now
 		if (kind !== common.INSERT_POST || extra.ip)
 			return null;
-		const m = msg.match(/^(\d+,\d+,\d+,)(.+)$/);
-		let post = JSON.parse(m[2]);
-		post.ip = extra.ip;
-		return m[1] + JSON.stringify(post);
+
+		// XXX: Why the fuck don't you just stringify arrays?
+		let parsed = JSON.parse(`[${msg}]`);
+		parsed[2].mnemonic = extra.mnemonic;
+		return JSON.stringify(parsed).slice(1, -1);
 	}
 	has_no_listeners() {
 		/* Possibly idle out after a while */
@@ -506,8 +514,6 @@ class Yakusoku extends events.EventEmitter {
 		/* Denormalize for backlog */
 		view.nonce = msg.nonce;
 		view.body = body;
-		extract(view, true);
-		delete view.ip;
 
 		let self = this,
 			bump;
@@ -539,8 +545,20 @@ class Yakusoku extends events.EventEmitter {
 						const n = self.post_volume(view, body);
 						if (n > 0)
 							self.update_throughput(m, ip, view.time, n);
-						etc.augments.auth = {ip: ip};
+
+						// Only the client-private Reader() instances need
+						// to embed mnemonics in-post. Doing that here would
+						// publish it to everyone. Instead live mnemonic
+						// updates are pushed through the 'auth' channel to
+						// authenticated staff only.
+						const mnemonic = admin.genMnemonic(ip);
+						if (mnemonic)
+							etc.augments.auth = {mnemonic};
 					}
+
+					// Don't parse dice, because they aren't stringified on
+					// live publishes
+					extract(view, true);
 					if (bump)
 						m.incr(tagKey + ':bumpctr');
 					self._log(m, op, common.INSERT_POST, [view, bump], etc);
@@ -1041,6 +1059,45 @@ class Yakusoku extends events.EventEmitter {
 			m.exec(cb);
 		});
 	}
+	modHandler(method, nums, cb) {
+		// Group posts by thread for live publishes to the clients
+		let threads = {};
+		for (let num of nums) {
+			const op = OPs[num];
+			if (!(op in threads))
+				threads[op] = [];
+			threads[op].push(num);
+		}
+		async.forEachOf(threads, this[method].bind(this), cb);
+	}
+	spoilerImages(nums, op, cb) {
+		let r = this.connect(),
+			m = r.multi(),
+			keys = [];
+		for (let num of nums) {
+			const key = `${op == num ? 'thread' : 'post'}:${num}`;
+			keys.push(key);
+			m.hmget(key, 'src', 'spoiler');
+		}
+		let self = this;
+		m.exec(function (err, data) {
+			if (err)
+				return cb(err);
+			let m = r.multi(),
+				updates = [];
+			for (let i = 0; i < data.length; i++) {
+				// No image or already spoilt
+				if (!data[i][0] || data[i][1])
+					continue;
+				const spoiler = common.pick_spoiler(-1).index;
+				m.hset(keys[i], 'spoiler', spoiler);
+				updates.push(nums[i], spoiler);
+			}
+			if (updates.length)
+				self._log(m, op, common.SPOILER_IMAGES, updates);
+			m.exec(cb);
+		})
+	}
 }
 exports.Yakusoku = Yakusoku;
 
@@ -1050,8 +1107,7 @@ class Reader extends events.EventEmitter {
 	constructor(ident) {
 		// Call the EventEmitter's constructor
 		super();
-		if (caps.can_moderate(ident))
-			this.showIPs = true;
+		this.canModerate = caps.can_moderate(ident);
 		this.r = global.redis;
 	}
 	get_thread(tag, num, opts) {
@@ -1142,10 +1198,9 @@ class Reader extends events.EventEmitter {
 								total += parseInt(rs.shift(), 10);
 						}
 
+						self.injectMnemonic(opPost);
 						extract(opPost);
 						opPost.omit = Math.max(total - abbrev, 0);
-						if (!self.showIPs)
-							delete opPost.ip;
 						opPost.hctr = parseInt(opPost.hctr, 10);
 						// So we can pass a thread number on `endthread`
 						// emission
@@ -1177,6 +1232,13 @@ class Reader extends events.EventEmitter {
 			if (prop)
 				post[key] = prop;
 		}
+	}
+	injectMnemonic(post) {
+		if (!this.canModerate)
+			return;
+		const mnemonic = admin.genMnemonic(post.ip);
+		if (mnemonic)
+			post.mnemonic = mnemonic;
 	}
 	merge_posts(nums, deadNums, abbrev) {
 		let i = nums.length - 1,
@@ -1256,10 +1318,10 @@ class Reader extends events.EventEmitter {
 				self.with_body(key, pre_post, next);
 			},
 			function (post, next) {
-				if (post)
+				if (post) {
+					self.injectMnemonic(post);
 					extract(post);
-				if (!self.showIPs)
-					delete post.ip;
+				}
 				next(null, post);
 			}
 		],	cb);
@@ -1328,6 +1390,7 @@ function get_all_replies(r, op, cb) {
 }
 
 function extract(post, dontParseDice) {
+	delete post.ip;
 	post.num = parseInt(post.num, 10);
 	imager.nestImageProps(post);
 	if (!dontParseDice)

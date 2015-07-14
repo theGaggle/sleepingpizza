@@ -2,7 +2,7 @@
  * Shared by the server and client
  */
 
-const lang = {
+var lang = {
 	anon: 'Anonymous',
 	search: 'Search',
 	show: 'Show',
@@ -22,6 +22,7 @@ const lang = {
 	newThread: 'New thread',
 	locked_to_bottom: 'Locked to bottom',
 	you: '(You)',
+	done: 'Done',
 
 	// Time-related
 	week: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
@@ -33,6 +34,22 @@ const lang = {
 	unit_day: 'day',
 	unit_month: 'month',
 	unit_year: 'year',
+
+	// Moderation language map
+	mod: {
+		clearSelection: ['Clear', 'Clear selected posts'],
+		spoilerImages: ['Spoiler', 'Spoiler selected post images'],
+		deleteImages: ['Del Img', 'Delete selected post images'],
+		deletePosts: ['Del Post', 'Delete selected posts'],
+		lockThread: ['Lock', 'Lock selected threads'],
+		toggleMnemonics: ['Mnemonics', 'Toggle mnemonic display'],
+		sendNotification: [
+			'Notification',
+			'Send notifaction message to all clients'
+		],
+		dispatchFun: ['Fun', 'Execute arbitrary JavaScript on all clients'],
+		renderPanel: ['Panel', 'Toggle administrator panel display']
+	},
 
 	// Format functions
 	pluralize: function(n, noun) {

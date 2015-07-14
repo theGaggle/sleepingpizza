@@ -72,7 +72,8 @@ main.on('state:clear', function() {
 let links = exports.links = {};
 
 function addLinks(addition) {
-	if (addition)
+	if (addition) {
 		_.extend(links, addition);
+	}
 }
 exports.addLinks = addLinks;

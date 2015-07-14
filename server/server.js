@@ -1,5 +1,5 @@
 /*
- Core server module and entry point
+Core server module and application entry point
  */
 'use strict';
 
@@ -8,13 +8,16 @@ let config = require('../config');
 if (config.DEBUG)
 	Error.stackTraceLimit = 100;
 
+// Read command line arguments. Modifies ../configure, so loaded right after it.
 let opts = require('./opts');
 if (require.main == module)
 	opts.parse_args();
 opts.load_defaults();
 
-// Initialize server state
-let STATE = require('./state');
+// Several modules depend on the state module and a redis connection. Load
+// those first.
+let STATE = require('./state'),
+	db = require('../db');
 
 let _ = require('underscore'),
     amusement = require('./amusement'),
@@ -23,7 +26,6 @@ let _ = require('underscore'),
     check = require('./msgcheck').check,
     common = require('../common/index'),
 	cookie = require('cookie'),
-    db = require('../db'),
     fs = require('fs'),
     hooks = require('../util/hooks'),
     imager = require('../imager'),
@@ -255,9 +257,8 @@ dispatcher[common.INSERT_POST] = function (msg, client) {
 };
 
 function inactive_board_check(client) {
-	if (caps.can_administrate(client.ident))
-		return true;
-	return config.READ_ONLY_BOARDS.indexOf(client.board) === -1;
+	return caps.can_moderate(client.ident)
+		|| config.READ_ONLY_BOARDS.indexOf(client.board) === -1;
 }
 
 function allocate_post(msg, client, callback) {
@@ -481,12 +482,20 @@ dispatcher[common.INSERT_IMAGE] = function (msg, client) {
 
 // Online count
 hooks.hook('clientSynced', function(info, cb){
-	info.client.send([0, common.ONLINE_COUNT, Object.keys(STATE.clientsByIP).length]);
+	info.client.send([
+		0,
+		common.ONLINE_COUNT,
+		Object.keys(STATE.clientsByIP).length
+	]);
 	cb(null);
 });
 
 STATE.emitter.on('change:clientsByIP', function(){
-	okyaku.push([0, common.ONLINE_COUNT, Object.keys(STATE.clientsByIP).length]);
+	okyaku.push([
+		0,
+		common.ONLINE_COUNT,
+		Object.keys(STATE.clientsByIP).length
+	]);
 });
 
 // Update hot client variables on client request
@@ -508,8 +517,6 @@ hooks.hook('clientSynced', function(info, cb){
 	info.client.send([0, common.HOT_INJECTION, false, STATE.clientConfigHash]);
 	cb(null);
 });
-
-
 
 // Regex replacement filter
 function hot_filter(frag) {

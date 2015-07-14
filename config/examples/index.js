@@ -4,8 +4,8 @@ module.exports = {
 	LISTEN_HOST: null,
 // Debuging mode. Do not use in production
 	DEBUG: true,
-// Secure tripcode encryption salt
-	SECURE_SALT: "LALALALALALALALA", /* [A-Za-z0-9./]{16} */
+// Secure encryption salt. First 16 chars used for tripcode, mnemonics uses all 40
+	SECURE_SALT: "LALALALALALALALALALALALALALALALALALALALA", /* [A-Za-z0-9]{40} */
 // Relative path to serve websocket connections
 	SOCKET_PATH: '/hana',
 /*
@@ -81,8 +81,6 @@ module.exports = {
 // URL and domain of the website
 	PERSONA_AUDIENCE: 'http://localhost:8000',
 	LOGIN_SESSION_TIME: 60*60*24*14,
-// Translate IP's into more human-readable mnemonics
-	IP_MNEMONIC: true,
 // Enable staff to assign custom tags to poster IPs
 	IP_TAGGING: true,
 

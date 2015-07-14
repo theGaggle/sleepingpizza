@@ -3,7 +3,7 @@
  */
 
 let main = require('./main'),
-	{$, Backbone, state, options} = main;
+	{$, Backbone, connSM, state, options} = main;
 
 const mediaURL = main.config.MEDIA_URL;
 
@@ -47,17 +47,16 @@ let NotifyModel = Backbone.Model.extend({
 			});
 			// Prevent scrolling with new posts, if page isn't visible
 			if (!options.get('alwaysLock')) {
-				main.command(
-					'scroll:focus',
+				main.follow(() =>
 					hidden && main.$threads.find('article').last().attr('id')
 				);
 			}
 		}, false);
 
 		let dropped = () => this.set('alert', true);
-		main.connSM.on('dropped', dropped);
-		main.connSM.on('desynced', dropped);
-		main.connSM.on('synced', () => notify.set('alert', false));
+		connSM.on('dropped', dropped);
+		connSM.on('desynced', dropped);
+		connSM.on('synced', () => notify.set('alert', false));
 	},
 	check(model) {
 		const {hidden, unreadCount, reply, alert} = model.attributes;
@@ -92,25 +91,28 @@ let notify = new NotifyModel({
 // Own post are remember for 2 days, so lets keep 1 day as a buffer
 let replies = new main.Memory('replies', 3);
 
-main.comply('repliedToMe', function (post) {
+main.comply('repliedToMe', function (num) {
+	let post = state.posts.get(num);
+	if (!post)
+		return;
 	post = post.attributes;
-	const num = post.num;
+
 	// Already displayed a notification for the reply. Needs to be read
 	// freshly from local storage each time, not to trigger multiple times,
 	// if the same post is displayed in multiple tabs.
 	if (num in replies.readAll())
 		return;
 	if (options.get('notification') && document.hidden && !main.isMobile) {
-		new Notification('You have been quoted', {
+		let n = new Notification('You have been quoted', {
 			// if the post doesn't have a image we use a bigger favicon
-			icon: post.image ? main.oneeSama.thumbPath(data)
+			icon: post.image ? main.oneeSama.thumbPath(post.image)
 				: mediaURL + 'css/ui/favbig.png',
 			body: post.body
-		})
-			.onclick = function() {
-				window.focus();
-				location.hash = '#' + num;
-			};
+		});
+		n.onclick = function() {
+			window.focus();
+			location.hash = '#' + num;
+		};
 	}
 
 	notify.set({reply: true});
