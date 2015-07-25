@@ -3,10 +3,9 @@
  */
 
 let main = require('./main'),
-	{$, _, common, config, connSM, state} = main;
+	{$, _, common, config, connSM, state, SockJS} = main;
 
-let SockJS = window.SockJS,
-	socket, attempts, attemptTimer;
+let socket, attempts, attemptTimer;
 
 function send(msg) {
 	// need deferral or reporting on these lost messages...
@@ -23,7 +22,7 @@ function send(msg) {
 		console.log('<', msg);
 	socket.send(msg);
 }
-main.comply('send', send);
+main.reply('send', send);
 
 function on_message(e) {
 	if (config.DEBUG)
@@ -73,7 +72,7 @@ function connect() {
 }
 
 function new_socket() {
-	var protocols = [
+	let transports = [
 		'xdr-streaming',
 		'xhr-streaming',
 		'iframe-eventsource',
@@ -84,9 +83,9 @@ function new_socket() {
 		'jsonp-polling'
 	];
 	if (config.USE_WEBSOCKETS)
-		protocols.unshift('websocket');
+		transports.unshift('websocket');
 	return new SockJS(config.SOCKET_URL || config.SOCKET_PATH, null, {
-		protocols_whitelist: protocols
+		transports
 	});
 }
 

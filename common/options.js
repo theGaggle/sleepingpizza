@@ -149,14 +149,11 @@ var opts = [
 		tab: 3,
 		default: true,
 		exec: function(toggle) {
-			if (toggle) {
+			if (toggle)
 				// Query the server for current stream info
-				main.defer(function() {
-					main.command('send', [index.RADIO])
-				});
-			}
+				main.request('send', [index.RADIO]);
 			else
-				main.command('banner:radio:clear');
+				main.request('banner:radio:clear');
 		}
 	}
 ];
@@ -249,7 +246,7 @@ opts.push(
 		],
 		tab: 1,
 		get default() {
-			return hotConfig.BOARD_CSS[state.page.get('board')]
+			return hotConfig.DEFAULT_CSS;
 		},
 		exec: function(theme) {
 			if (!theme)
@@ -272,7 +269,7 @@ opts.push(
 		tab: 1,
 		execOnStart: false,
 		exec: function(upload) {
-			main.command('background:store', upload);
+			main.request('background:store', upload);
 		}
 	},
 	/* LAST N CONFIG */

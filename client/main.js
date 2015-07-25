@@ -26,6 +26,7 @@ _.extend(main, {
 	// Bind dependancies to main object for pretier destructuring requires
 	$, _, Backbone, Cookie,
 	$script: require('scriptjs'),
+	SockJS: require('sockjs-client'),
 	stackBlur: require('stack-blur'),
 
 	/*
@@ -38,11 +39,9 @@ _.extend(main, {
 		return main;
 	},
 	execDeffered() {
-		_.defer(() => {
-			let def = this._deferred;
-			for (let i = 0, l = def.length; i < l; i++)
-				_.defer(def[i]);
-		});
+		for (let func of this._deferred) {
+			func();
+		}
 	},
 
 	/*
@@ -72,12 +71,11 @@ if (localStorage.cookieVersion !== '1') {
 	localStorage.cookieVersion = 1;
 }
 
-// Always log warnings
-radio.DEBUG = true;
 // You can invoke the client-side debug mode with the `debug=true` query string
 if (/[&\?]debug=true/.test(location.href))
 	main.config.DEBUG = true;
 if (main.config.DEBUG) {
+	radio.DEBUG = true;
 	// Export Backbone instance for easier debugging
 	window.Backbone = Backbone;
 	// Log all channel traffic
@@ -153,3 +151,4 @@ _.extend(main, {
 });
 
 main.execDeffered();
+main.request('loading:hide');

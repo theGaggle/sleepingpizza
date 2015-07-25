@@ -8,9 +8,10 @@ let main = require('./main'),
 class Extract {
 	constructor() {
 		let el = main.$threads[0];
+
 		// Read serialised model data
 		let json = JSON.parse(document.getElementById('postData').innerHTML);
-		main.command('notify:title', json.title);
+		main.request('notify:title', json.title);
 
 		// We don't need models on catalog pages
 		if (state.page.get('catalog'))
@@ -18,8 +19,8 @@ class Extract {
 
 		const mine = this.mine = state.mine.readAll(),
 			posts = this.posts = json.posts;
-		this.extractThreads(el);
 		this.extractReplies(el);
+		this.extractThreads(el);
 
 		state.addLinks(json.links);
 		// Forward posts that replied to my post
@@ -29,43 +30,38 @@ class Extract {
 				continue;
 			for (let num in links) {
 				if (num in mine)
-					main.command('repliedToMe', posts[post].num);
+					main.request('repliedToMe', posts[post].num);
 			}
 		}
 
 		// Apply various client-only DOM modifications
 		if (options.get('anonymise'))
-			main.command('loop:anonymise');
-		main.command('time:render');
+			main.request('loop:anonymise');
+		main.request('time:render');
 	}
 	extractReplies(el) {
-		let articles = el.getElementsByTagName('article'),
-			Article = posts.Article,
-			Post = posts.models.Post;
+		let articles = el.getElementsByTagName('article');
 		for (let i = 0, l = articles.length; i < l; i++) {
 			let article = articles[i];
-			new Article({
-				model: new Post(this.extractModel(article)),
+			new posts.Article({
+				model: new posts.models.Post(this.extractModel(article)),
 				el: article
 			});
 		}
 	}
 	extractThreads(el) {
-		let sections = el.getElementsByTagName('section'),
-			Section = posts.Section,
-			Thread = posts.models.Thread,
-			syncs = state.syncs;
-		for (let i = 0, l = sections.length; i < l; i++) {
+		let sections = el.getElementsByTagName('section');
+		for (let i = 0; i < sections.length ; i++) {
 			let section = sections[i];
 			const model = this.extractModel(section);
-			new Section({
-				model: new Thread(model),
+			new posts.Section({
+				model: new posts.models.Thread(model),
 				el: section
 			})
 				 .renderOmit();
 			// Read the sync ID of the thread. Used later for syncronising
 			// with the server.
-			syncs[model.num] = model.hctr;
+			state.syncs[model.num] = model.hctr;
 		}
 	}
 	extractModel(el) {
