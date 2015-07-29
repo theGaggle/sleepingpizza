@@ -40,7 +40,7 @@ recompile all dependancies
 * redis
 
 ###Optional dependencies
-* ffmpeg 2.2+ for WebM support
+* ffmpeg 2.2+ with libvpx, libvorbis and libopus for WebM support
   * with libmp3lame for MP3
 * pngquant  2.3.0+ for PNG thumbnails
 
@@ -55,3 +55,4 @@ recompile all dependancies
 * scripts/purge_bans.sh - Removes all bans
 * scripts/purge_mod_sessions.sh - Closes all active moderator sessions
 * scripts/radio.js - icecast2 server integration
+* scripts/send.js - global websocket push messages

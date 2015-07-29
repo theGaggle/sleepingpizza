@@ -156,16 +156,10 @@ function safe(frag) {
 }
 exports.safe = safe;
 
-function is_noko(email) {
-	return email && email.indexOf('@') == -1 && /noko/i.test(email);
-}
-exports.is_noko = is_noko;
-
 function is_sage(email) {
 	return imports.hotConfig.SAGE_ENABLED
 		&& email
-		&& email.indexOf('@') == -1
-		&& /sage/i.test(email);
+		&& email.trim() === 'sage';
 }
 exports.is_sage = is_sage;
 
