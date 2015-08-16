@@ -8,8 +8,7 @@
 .project
 .socket
 config/*.js
-graveyard
-doushio.error.log
+error.log
 node_modules/
 imager/tmp
 state

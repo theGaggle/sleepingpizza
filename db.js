@@ -2,9 +2,7 @@
 Main redis controller module
  */
 
-'use strict';
-
-let _ = require('underscore'),
+const _ = require('underscore'),
     async = require('async'),
     cache = require('./server/state').dbCache,
     caps = require('./server/caps'),
@@ -14,7 +12,6 @@ let _ = require('underscore'),
     fs = require('fs'),
     hooks = require('./util/hooks'),
     hot = require('./server/state').hot,
-    imager = require('./imager'),
     Muggle = require('./util/etc').Muggle,
     tail = require('./util/tail'),
     winston = require('winston');
@@ -27,16 +24,18 @@ function redis_client() {
 	return require('redis').createClient(config.REDIS_PORT || undefined);
 }
 exports.redis_client = redis_client;
-global.redis = redis_client();
+const redis = global.redis = redis_client();
+redis.on('error', err => winston.error('Redis error:', err));
+
+// Depend on global redis client
+const admin = require('./admin'),
+	amusement = require('./server/amusement'),
+	imager = require('./imager');
 
 exports.UPKEEP_IDENT = {
 	auth: 'Upkeep',
 	ip: '127.0.0.1'
 };
-
-// Depend on global redis client
-let admin = require('./admin'),
-	amusement = require('./server/amusement');
 
 /* REAL-TIME UPDATES */
 
@@ -77,9 +76,7 @@ class Subscription extends events.EventEmitter {
 		k.on('message', this.on_message.bind(this));
 		k.removeAllListeners('error');
 		k.on('error', this.sink_sub.bind(this));
-		this.subscription_callbacks.forEach(function(sub) {
-			sub(null);
-		});
+		this.subscription_callbacks.forEach(sub => sub(null));
 		delete this.pending_subscriptions;
 		delete this.subscription_callbacks;
 	}
@@ -90,7 +87,7 @@ class Subscription extends events.EventEmitter {
 		this.commit_sudoku();
 	}
 	commit_sudoku() {
-		let k = this.k;
+		const k = this.k;
 		k.removeAllListeners('error');
 		k.removeAllListeners('message');
 		k.removeAllListeners('subscribe');
@@ -103,9 +100,7 @@ class Subscription extends events.EventEmitter {
 	on_sub_error(err) {
 		winston.error("Subscription error:", (err.stack || err));
 		this.commit_sudoku();
-		this.subscription_callbacks.forEach(function(sub) {
-			sub(err);
-		});
+		this.subscription_callbacks.forEach(sub => sub(err));
 		this.subscription_callbacks = null;
 	}
 	on_message(chan, msg) {
@@ -134,39 +129,43 @@ class Subscription extends events.EventEmitter {
 		const m = msg.match(/^(\d+)\|/),
 			prefixLen = m[0].length,
 			bodyLen = parseInt(m[1], 10),
-			suffixPos = prefixLen + bodyLen;
-		let info = {body: msg.substr(prefixLen, bodyLen)};
+			suffixPos = prefixLen + bodyLen,
+			info = {body: msg.substr(prefixLen, bodyLen)};
 		if (msg.length > suffixPos)
 			info.suffixPos = suffixPos;
 		return info;
 	}
 	inject_extra(kind, msg, extra) {
-		// Just one kind of insertion right now
-		if (kind !== common.INSERT_POST || extra.ip)
-			return null;
-
 		// XXX: Why the fuck don't you just stringify arrays?
 		let parsed = JSON.parse(`[${msg}]`);
-		parsed[2].mnemonic = extra.mnemonic;
+		switch (kind) {
+			case common.INSERT_POST:
+				parsed[2].mnemonic = extra.mnemonic;
+				break;
+			// Add moderation information to staff
+			case common.SPOILER_IMAGES:
+			case common.DELETE_IMAGES:
+			case common.DELETE_POSTS:
+				parsed.push(extra);
+				break;
+			default:
+				return null;
+		}
 		return JSON.stringify(parsed).slice(1, -1);
 	}
 	has_no_listeners() {
 		/* Possibly idle out after a while */
-		let self = this;
 		if (this.idleOutTimer)
 			clearTimeout(this.idleOutTimer);
-		this.idleOutTimer = setTimeout(function() {
-			self.idleOutTimer = null;
-			if (self.listeners('update').length == 0)
-				self.commit_sudoku();
+		this.idleOutTimer = setTimeout(() => {
+			this.idleOutTimer = null;
+			if (this.listeners('update').length == 0)
+				this.commit_sudoku();
 		}, 30000);
 	}
 	static get(target, ident) {
 		const full = Subscription.full_key(target, ident);
-		let sub = SUBS[full.key];
-		if (!sub)
-			sub = new Subscription(full);
-		return sub;
+		return SUBS[full.key] || new Subscription(full);
 	}
 	static full_key(target, ident) {
 		let channel;
@@ -293,7 +292,6 @@ function on_pub (name, handler) {
 exports.on_pub = on_pub;
 
 function load_OPs(callback) {
-	var r = global.redis;
 	var boards = config.BOARDS;
 	// Want consistent ordering in the TAGS entries for multi-tag threads
 	// (so do them in series)
@@ -303,7 +301,7 @@ function load_OPs(callback) {
 	function scan_board(tag, cb) {
 		var tagIndex = boards.indexOf(tag);
 		threadsKey = 'tag:' + tag_key(tag) + ':threads';
-		r.zrange(threadsKey, 0, -1, function (err, threads) {
+		redis.zrange(threadsKey, 0, -1, function (err, threads) {
 			if (err)
 				return cb(err);
 			async.forEach(threads, function (op, cb) {
@@ -318,7 +316,7 @@ function load_OPs(callback) {
 		op = parseInt(op, 10);
 		add_OP_tag(tagIndex, op);
 		OPs[op] = op;
-		get_all_replies(r, op, function (err, posts) {
+		get_all_replies(op, function (err, posts) {
 			if (err)
 				return cb(err);
 			for (let i = 0, l = posts.length; i < l; i++) {
@@ -331,31 +329,67 @@ function load_OPs(callback) {
 
 /* SOCIETY */
 
+// Options for various moderation actions. No prototype properties in ES6,
+// so keep them here.
+const moderationSpecs = {
+	[common.SPOILER_IMAGES]: {
+		props: ['src', 'spoler'],
+		check(res) {
+			// No image or already spoilt
+			return !res[0] || res[1];
+		},
+		persist(m, key, msg) {
+			const spoiler = common.pick_spoiler(-1).index;
+			m.hset(key, 'spoiler', spoiler);
+			msg.push(spoiler);
+		}
+	},
+	[common.DELETE_IMAGES]: {
+		props: ['src', 'imgDeleted'],
+		check(res) {
+			// No image or already hidden
+			return !res[0] || res[1];
+		},
+		persist(m, key) {
+			m.hset(key, 'imgDeleted', true);
+		}
+	},
+	[common.DELETE_POSTS]: {
+		props: ['deleted'],
+		check(res) {
+			return res[0];
+		},
+		persist(m, key) {
+			m.hset(key, 'deleted', true);
+		}
+	}
+};
+
+// Main database controller class
 class Yakusoku extends events.EventEmitter {
 	constructor(board, ident) {
 		super();
 		this.id = ++(cache.YAKUMAN);
 		this.tag = board;
+
+		//Should moderation be allowed on this board?
+		this.isContainmentBoard
+			= config.containment_boards.indexOf(this.tag) > -1;
 		this.ident = ident;
 		this.subs = [];
-	}
-	connect() {
-		// multiple redis connections are pointless (without slaves)
-		return global.redis;
 	}
 	disconnect() {
 		this.removeAllListeners();
 	}
 	kiku(targets, on_update, on_sink, callback) {
-		let self = this;
 		this.on_update = on_update;
 		this.on_sink = on_sink;
-		forEachInObject(targets, function(id, cb) {
-			const target = self.target_key(id);
-			let sub = Subscription.get(target, self.ident);
+		forEachInObject(targets, (id, cb) => {
+			const target = this.target_key(id),
+				sub = Subscription.get(target, this.ident);
 			sub.on('update', on_update);
 			sub.on('error', on_sink);
-			self.subs.push(sub.fullKey);
+			this.subs.push(sub.fullKey);
 			sub.when_ready(cb);
 		}, callback);
 	}
@@ -363,9 +397,8 @@ class Yakusoku extends events.EventEmitter {
 		return id === 'live' ? 'tag:' + this.tag : 'thread:' + id;
 	}
 	kikanai() {
-		const subs = this.subs;
-		for (let i = 0, l = subs.length; i < l; i++) {
-			let sub = SUBS[subs[i]];
+		for (let i = 0; i < this.subs.length; i++) {
+			const sub = SUBS[this.subs[i]];
 			if (!sub)
 				continue;
 			sub.removeListener('update', this.on_update);
@@ -379,15 +412,14 @@ class Yakusoku extends events.EventEmitter {
 	reserve_post(op, ip, callback) {
 		if (config.READ_ONLY)
 			return callback(Muggle("Can't post right now."));
-		let r = this.connect();
 		if (ip === '127.0.0.1')
-			return reserve();
+			return this.reserve(op, callback);
 
 		const key = `ip:${ip}:throttle:`,
 			now = Date.now(),
 			shortTerm = key + this.short_term_timeslot(now),
 			longTerm = key + this.long_term_timeslot(now);
-		r.mget([shortTerm, longTerm], function(err, quants) {
+		redis.mget([shortTerm, longTerm], (err, quants) => {
 			if (err)
 				return callback(Muggle("Limiter failure.", err));
 			if (quants[0] > config.SHORT_TERM_LIMIT
@@ -395,17 +427,16 @@ class Yakusoku extends events.EventEmitter {
 			)
 				return callback(Muggle('Reduce your speed.'));
 
-			reserve();
+			this.reserve(op, callback);
 		});
-
-		function reserve() {
-			r.incr('postctr', function(err, num) {
-				if (err)
-					return callback(err);
-				OPs[num] = op || num;
-				callback(null, num);
-			});
-		}
+	}
+	reserve(op, cb) {
+		redis.incr('postctr', function(err, num) {
+			if (err)
+				return cb(err);
+			OPs[num] = op || num;
+			cb(null, num);
+		});
 	}
 	short_term_timeslot(when) {
 		return Math.floor(when / (1000 * 60 * 5));
@@ -416,16 +447,12 @@ class Yakusoku extends events.EventEmitter {
 	insert_post(msg, body, extra, callback) {
 		if (config.READ_ONLY)
 			return callback(Muggle("Can't post right now."));
-		let r = this.connect();
 		if (!this.tag)
 			return callback(Muggle("Can't retrieve board for posting."));
-		let op = msg.op;
-		const ip = extra.ip,
-			board = extra.board,
-			num = msg.num,
-			isThead = !op;
-		if (!op)
-			op = num;
+		const {num} = msg,
+			op = msg.op || num,
+			{ip, board} = extra,
+			isThead = !msg.op;
 		if (!num)
 			return callback(Muggle("No post number."));
 		else if (!ip)
@@ -435,18 +462,16 @@ class Yakusoku extends events.EventEmitter {
 			return callback(Muggle('Thread does not exist.'));
 		}
 
-		let view = {
+		const view = {
 			time: msg.time,
-			num: num,
-			board: board,
-			ip: ip,
+			num,
+			board,
+			ip,
 			state: msg.state.join()
 		};
-		const optPostFields = [
-			'name', 'trip', 'email', 'auth', 'subject', 'dice'
-		];
-		for (let i = 0, l = optPostFields.length; i < l; i++) {
-			const field = optPostFields[i];
+		const optPostFields = ['name', 'trip', 'email', 'auth', 'subject', 
+			'dice'];
+		for (let field of optPostFields) {
 			if (msg[field])
 				view[field] = msg[field];
 		}
@@ -463,8 +488,8 @@ class Yakusoku extends events.EventEmitter {
 			delete msg.image.pinky;
 		}
 
-		const key = (isThead ? 'thread:' : 'post:') + num;
-		let m = r.multi();
+		const key = (isThead ? 'thread:' : 'post:') + num,
+			m = redis.multi();
 		m.incr(tagKey + ':postctr'); // must be first
 		m.sadd('liveposts', key);
 
@@ -495,16 +520,14 @@ class Yakusoku extends events.EventEmitter {
 			this.addBacklinks(m, num, op, links);
 		}
 
-		let etc = {
+		const etc = {
 			augments: {},
 			cacheUpdate: {}
 		};
 		if (isThead) {
-			// TODO: Add to alternate thread list?
-
 			/* Rate-limit new threads */
 			if (ip != '127.0.0.1')
-				m.setex('ip:'+ip+':throttle:thread', config.THREAD_THROTTLE, op);
+				m.setex(`ip:${ip}:throttle:thread`, config.THREAD_THROTTLE, op);
 		}
 		else {
 			etc.cacheUpdate.num = num;
@@ -515,13 +538,12 @@ class Yakusoku extends events.EventEmitter {
 		view.nonce = msg.nonce;
 		view.body = body;
 
-		let self = this,
-			bump;
+		let bump;
 		async.waterfall(
 			[
 				function (next) {
 					if (!msg.image)
-						return next(null);
+						return next();
 					imager.commit_image_alloc(extra.image_alloc, next);
 				},
 				// Determine, if we need to bump the thread to the top of
@@ -532,7 +554,7 @@ class Yakusoku extends events.EventEmitter {
 						return next();
 					}
 
-					r.llen(`thread:${op}:posts`, function(err, res) {
+					redis.llen(`thread:${op}:posts`, function(err, res) {
 						if (err)
 							return next(err);
 						bump = !common.is_sage(view.email)
@@ -540,11 +562,11 @@ class Yakusoku extends events.EventEmitter {
 						next();
 					});
 				},
-				function(next) {
+				next => {
 					if (ip) {
-						const n = self.post_volume(view, body);
+						const n = this.post_volume(view, body);
 						if (n > 0)
-							self.update_throughput(m, ip, view.time, n);
+							this.update_throughput(m, ip, view.time, n);
 
 						// Only the client-private Reader() instances need
 						// to embed mnemonics in-post. Doing that here would
@@ -561,13 +583,13 @@ class Yakusoku extends events.EventEmitter {
 					extract(view, true);
 					if (bump)
 						m.incr(tagKey + ':bumpctr');
-					self._log(m, op, common.INSERT_POST, [view, bump], etc);
+					this._log(m, op, common.INSERT_POST, [view, bump], etc);
 					m.exec(next);
 				},
 				function(res, next) {
 					if (!bump)
 						return next();
-					r.zadd(tagKey + ':threads', res[0], op, next);
+					redis.zadd(tagKey + ':threads', res[0], op, next);
 				}
 			],
 			function (err) {
@@ -575,19 +597,17 @@ class Yakusoku extends events.EventEmitter {
 					delete OPs[num];
 					return callback(err);
 				}
-				callback(null);
+				callback();
 			}
 		);
 	}
 	imageDuplicateHash(m, hash, num) {
-		m.zadd('imageDups',
-			Date.now() + (config.DEBUG ? 30000 : 3600000),
-			num + ':' + hash
-		);
+		m.zadd('imageDups', Date.now() + (config.DEBUG ? 30000 : 3600000), 
+			`${num}:${hash}`);
 	}
 	writeDice(m, dice, key) {
-		let stringified = [];
-		for (let i = 0, l = dice.length; i < l; i++) {
+		const stringified = [];
+		for (let i = 0; i < dice.length; i++) {
 			stringified[i] = JSON.stringify(dice[i]);
 		}
 		m.lpush(key + ':dice', stringified);
@@ -600,7 +620,8 @@ class Yakusoku extends events.EventEmitter {
 			const key = (targetNum in TAGS ? 'thread' : 'post')
 				+ `:${targetNum}:backlinks`;
 			m.hset(key, num, op);
-			this._log(m, links[targetNum], common.BACKLINK, [targetNum, num, op]);
+			this._log(m, links[targetNum], common.BACKLINK, 
+				[targetNum, num, op]);
 		}
 	}
 	post_volume(view, body) {
@@ -622,7 +643,8 @@ class Yakusoku extends events.EventEmitter {
 		m.expire(longKey, 2 * 24 * 3600);
 	}
 	_log(m, op, kind, msg, opts) {
-		opts = opts || {};
+		if (!opts)
+			opts = {};
 		msg = JSON.stringify(msg).slice(1, -1);
 		msg = msg.length ? (kind + ',' + msg) : ('' + kind);
 		if (config.DEBUG)
@@ -644,84 +666,78 @@ class Yakusoku extends events.EventEmitter {
 			msg += JSON.stringify(opts.augments);
 		m.publish(key, msg);
 		const tags = opts.tags || (this.tag ? [this.tag] : []);
-		for (let i = 0, l = tags.length; i < l; i++) {
-			m.publish('tag:' + tags[i], msg);
+		for (let tag of tags) {
+			m.publish('tag:' + tag, msg);
 		}
 		if (opts.cacheUpdate) {
-			var info = {kind: kind, tag: tags[0], op: op};
+			const info = {kind, op, tag: tags[0]};
 			_.extend(info, opts.cacheUpdate);
 			m.publish('cache', JSON.stringify(info));
 		}
 	}
 	add_image(post, alloc, ip, callback) {
-		let r = this.connect();
-		const num = post.num,
-			op = post.op;
+		const {num, op} = post;
 		if (!op)
 			return callback(Muggle("Can't add another image to an OP."));
-		let image = alloc.image;
+		const {image} = alloc;
 		if (!image.pinky)
 			return callback(Muggle("Image is wrong size."));
 		delete image.pinky;
 
 		const key = 'post:' + num;
-		let self = this;
 		async.waterfall([
-			function(next) {
-				r.exists(key, next);
-			},
-			function(exists, next) {
+			next => redis.exists(key, next),
+			(exists, next) => {
 				if (!exists)
 					return next(Muggle("Post does not exist."));
 				imager.commit_image_alloc(alloc, next);
 			},
-			function(next) {
-				let m = r.multi();
-				self.imageDuplicateHash(m, image.hash, num);
+			next => {
+				const m = redis.multi();
+				this.imageDuplicateHash(m, image.hash, num);
 				m.hmset(key, image);
 				m.hincrby('thread:' + op, 'imgctr', 1);
 
-				// Useless on the client
+				// Useless once image is commited
 				delete image.hash;
-				self._log(m, op, common.INSERT_IMAGE, [num, image]);
+				this._log(m, op, common.INSERT_IMAGE, [num, image]);
 
 				const now = Date.now();
-				self.update_throughput(m, ip, now,
-					self.post_volume({image: true})
-				);
+				this.update_throughput(m, ip, now, 
+					this.post_volume({image: true}));
 				m.exec(next);
 			}
 		], callback);
 	}
 	append_post(post, tail, old_state, extra, cb) {
-		let m = this.connect().multi();
-		const key = (post.op ? 'post:' : 'thread:') + post.num;
+		const m = redis.multi(),
+			key = (post.op ? 'post:' : 'thread:') + post.num;
+		
 		/* Don't need to check .exists() thanks to client state */
 		m.append(key + ':body', tail);
+
 		/* XXX: fragile */
 		if (old_state[0] != post.state[0] || old_state[1] != post.state[1])
 			m.hset(key, 'state', post.state.join());
 		if (extra.ip) {
 			const now = Date.now();
-			this.update_throughput(m, extra.ip, now,
-				this.post_volume(null, tail)
-			);
+			this.update_throughput(m, extra.ip, now, 
+				this.post_volume(null, tail));
 		}
 		if (!_.isEmpty(extra.new_links))
 			m.hmset(key + ':links', extra.new_links);
 
-		const num = post.num,
-			op = post.op || num;
+		const {num} = post,
+			op = post.op || num,
+		
 		// TODO: Make less dirty, when post state is refactored
-		let _extra = {
-			state: [old_state[0] || 0, old_state[1] || 0]
-		};
-		const links = extra.links;
+			_extra = {state: [old_state[0] || 0, old_state[1] || 0]};
+		const {links} = extra;
 		if (links) {
 			_extra.links = links;
 			this.addBacklinks(m, num, op, links);
 		}
-		const dice = extra.dice;
+		const {dice} = extra;
 		if (dice) {
 			_extra.dice = dice;
 			this.writeDice(m, dice, key);
@@ -731,8 +747,9 @@ class Yakusoku extends events.EventEmitter {
 		m.exec(cb);
 	}
 	finish_post(post, callback) {
-		let m = this.connect().multi();
-		const key = (post.op ? 'post:' : 'thread:') + post.num;
+		const m = redis.multi(),
+			key = (post.op ? 'post:' : 'thread:') + post.num;
+		
 		/* Don't need to check .exists() thanks to client state */
 		this.finish_off(m, key, post.body);
 		this._log(m, post.op || post.num, common.FINISH_POST, [post.num]);
@@ -745,44 +762,38 @@ class Yakusoku extends events.EventEmitter {
 		m.srem('liveposts', key);
 	}
 	finish_quietly(key, callback) {
-		let r = this.connect(),
-			self = this;
 		async.waterfall([
-			function(next) {
-				r.hexists(key, 'body', next);
-			},
-			function(exists, next) {
+			next => redis.hexists(key, 'body', next),
+			(exists, next) => {
 				if (exists)
-					return callback(null);
-				r.get(key.replace('dead', 'thread') + ':body', next);
+					return callback();
+				redis.get(key.replace('dead', 'thread') + ':body', next);
 			},
-			function(body, next) {
-				let m = r.multi();
-				self.finish_off(m, key, body);
+			(body, next) => {
+				const m = redis.multi();
+				this.finish_off(m, key, body);
 				m.exec(next);
 			}
 		], callback);
 	}
 	finish_all(callback) {
-		let r = this.connect(),
-			self = this;
-		r.smembers('liveposts', function(err, keys) {
+		redis.smembers('liveposts', (err, keys) => {
 			if (err)
 				return callback(err);
-			async.forEach(keys, function(key, cb) {
-				let m = r.multi();
+			async.forEach(keys, (key, cb) => {
+				const m = redis.multi();
 				m.get(key + ':body');
 				const isPost = key.slice(0, 5) == 'post:';
 				if (isPost)
 					m.hget(key, 'op');
-				m.exec(function(err, rs) {
+				m.exec((err, rs) => {
 					if (err)
 						return cb(err);
-					let m = r.multi();
-					self.finish_off(m, key, rs[0]);
+					const m = redis.multi();
+					this.finish_off(m, key, rs[0]);
 					const n = parseInt(key.match(/:(\d+)$/)[1]),
 						op = isPost ? parseInt(rs[1], 10) : n;
-					self._log(m, op, common.FINISH_POST, [n]);
+					this._log(m, op, common.FINISH_POST, [n]);
 					m.srem('liveposts', key);
 					m.exec(cb);
 				});
@@ -790,19 +801,18 @@ class Yakusoku extends events.EventEmitter {
 		});
 	}
 	fetch_backlogs(watching, callback) {
-		let r = this.connect(),
-			combined = [];
+		const combined = [];
 		forEachInObject(watching,
 			function (thread, cb) {
 				if (thread == 'live')
-					return cb(null);
-				const key = 'thread:' + thread + ':history',
+					return cb();
+				const key = `thread:${thread}:history`,
 					sync = watching[thread];
-				r.lrange(key, sync, -1, function (err, log) {
+				redis.lrange(key, sync, -1, function (err, log) {
 					if (err)
 						return cb(err);
 					const prefix = thread + ',';
-					for (let i = 0, l = log.length; i < l; i++) {
+					for (let i = 0; i < log.length; i++) {
 						combined.push(prefix + log[i]);
 					}
 					cb(null);
@@ -814,7 +824,7 @@ class Yakusoku extends events.EventEmitter {
 		);
 	}
 	check_thread_locked(op, callback) {
-		this.connect().hexists('thread:' + op, 'locked', function(err, lock) {
+		redis.hexists('thread:' + op, 'locked', function(err, lock) {
 			if (err)
 				return callback(err);
 			callback(lock ? Muggle('Thread is locked.') : null);
@@ -824,21 +834,17 @@ class Yakusoku extends events.EventEmitter {
 		// So we can spam new threads in debug mode
 		if (config.DEBUG)
 			return callback(null);
-		const key = `ip:${ip}:throttle:thread`;
-		this.connect().exists(key, function(err, exists) {
+		redis.exists(`ip:${ip}:throttle:thread`, function(err, exists) {
 			if (err)
 				return callback(err);
 			callback(exists ? Muggle('Too soon.') : null);
 		});
 	}
 	get_tag(page) {
-		let r = this.connect(),
-			self = this;
 		const keyBase = 'tag:' + tag_key(this.tag),
-			key = keyBase + ':threads';
-
-		// -1 is for live pages and -2 is for catalog
-		const catalog = page === -2;
+			key = keyBase + ':threads',
+			// -1 is for live pages and -2 is for catalog
+			catalog = page === -2;
 		if (page < 0)
 			page = 0;
 		let start, end;
@@ -852,24 +858,27 @@ class Yakusoku extends events.EventEmitter {
 			end = start + hot.THREADS_PER_PAGE - 1;
 		}
 
-		let m = r.multi();
+		const m = redis.multi();
 		m.zrevrange(key, start, end);
 		m.zcard(key);
+		
 		// Used for building board eTags
 		m.get(keyBase + ':postctr');
-		m.exec(function (err, res) {
+		m.exec((err, res) => {
 			if (err)
-				return self.emit('error', err);
-			let nums = res[0];
+				return this.emit('error', err);
+			const nums = res[0];
 			if (page > 0 && !nums.length)
-				return self.emit('nomatch');
-			self.emit('begin', res[1] || 0, res[2] || 0);
-			let reader = new Reader(self.ident);
-			reader.on('error', self.emit.bind(self, 'error'));
-			reader.on('thread', self.emit.bind(self, 'thread'));
-			reader.on('post', self.emit.bind(self, 'post'));
-			reader.on('endthread', self.emit.bind(self, 'endthread'));
-			self._get_each_thread(reader, 0, nums, catalog);
+				return this.emit('nomatch');
+			this.emit('begin', res[1] || 0, res[2] || 0);
+			const reader = new Reader(this.ident);
+			
+			// Proxy Reader events to Yakusoku
+			reader.on('error', this.emit.bind(this, 'error'));
+			reader.on('thread', this.emit.bind(this, 'thread'));
+			reader.on('post', this.emit.bind(this, 'post'));
+			reader.on('endthread', this.emit.bind(this, 'endthread'));
+			this._get_each_thread(reader, 0, nums, catalog);
 		});
 	}
 	_get_each_thread(reader, ix, nums, catalog) {
@@ -879,8 +888,8 @@ class Yakusoku extends events.EventEmitter {
 			reader.removeAllListeners('end');
 			return;
 		}
-
-		let self = this;
+		
+		const self = this;
 		function next_please() {
 			reader.removeListener('end', next_please);
 			reader.removeListener('nomatch', next_please);
@@ -897,60 +906,52 @@ class Yakusoku extends events.EventEmitter {
 	// Purges all the thread's keys from the database and delete's all images
 	// contained
 	purge_thread(op, board, callback) {
-		let r = this.connect();
-		const key = 'thread:' + op;
-		let keysToDel = [],
+		const key = 'thread:' + op,
+			// Key suffixes that might or might not exist
+			optional = ['links', 'backlinks', 'body', 'dice', 'mod'],
+			keysToDel = [],
 			filesToDel = [],
 			nums = [];
 		async.waterfall([
 			// Confirm thread can be deleted
-			function(next) {
-				r.exists(key, next);
-			},
-			function(res, next) {
+			next => redis.exists(key, next),
+			(res, next) => {
 				// Likely to happen, if interrupted mid-purge
 				if (!res) {
-					r.zrem(`tag:${tag_key(board)}:threads`, op);
+					redis.zrem(`tag:${tag_key(board)}:threads`, op);
 					return callback();
 				}
+				
 				// Get reply list
-				r.lrange(key + ':posts', 0, -1, next);
+				redis.lrange(key + ':posts', 0, -1, next);
 			},
 			// Read all post hashes
-			function(posts, next) {
-				let m = r.multi();
-				for (let i = 0, l = posts.length; i < l; i++) {
+			(posts, next) => {
+				const m = redis.multi();
+				for (let i = 0; i < posts.length; i++) {
 					// Queue for removal from post cache
 					nums.push(posts[i]);
 					posts[i] = 'post:' + posts[i];
 				}
+				
 				// Parse OP key like all other hashes. `res` will always be an
 				// array, even if empty.
 				posts.unshift(key);
-				for (let i = 0, l = posts.length; i < l; i++) {
-					const key = posts[i];
+				for (let key of posts) {
 					m.hgetall(key);
-					m.exists(key + ':links');
-					m.exists(key + ':backlinks');
-					// It should only still exists because of server shutdown
-					// mid-post, but those do happen
-					m.exists(key + ':body');
-					m.exists(key + ':dice');
+					for (let suffix of optional) {
+						m.exists(`${key}:${suffix}`);
+					}
 				}
+				
 				// A bit more complicated, because we need to pass two arguments
 				// to the next function, to map the arrays
-				m.exec(function(err, res) {
-					if (err)
-						return next(err);
-					next(null, res, posts);
-				})
+				m.exec((err, res) => next(err, res, posts));
 			},
 			// Populate key and file to delete arrays
-			function(res, posts, next) {
-				const imageTypes = ['src', 'thumb', 'mid'],
-					optional = [':links', ':backlinks', ':body', ':dice'];
-				let path = imager.media_path;
-				for (let i = 0, l = res.length; i < l; i += 6) {
+			(res, posts, next) => {
+				const imageTypes = ['src', 'thumb', 'mid'];
+				for (let i = 0; i < res.length; i += 6) {
 					const hash = res[i],
 						key = posts[i / 6];
 					if (!hash)
@@ -958,78 +959,55 @@ class Yakusoku extends events.EventEmitter {
 
 					keysToDel.push(key);
 					for (let o = 0; o < optional.length; o++) {
-						if (!res[i + o])
-							continue;
-						keysToDel.push(key + optional[o]);
+						if (res[i + o])
+							keysToDel.push(`${key}:${optional[o]}`);
 					}
 
 					// Add images to delete list
-					for (let o = 0, len = imageTypes.length; o < len; o++) {
-						const type = imageTypes[o],
-							image = hash[type];
-						if (!image)
-							continue;
-						filesToDel.push(path(type, image));
+					for (let type of imageTypes) {
+						const image = hash[type];
+						if (image)
+							filesToDel.push(imager.media_path(type, image));
 					}
 				}
 				next();
 			},
 			// Check for OP-only keys
-			function(next) {
-				const suffixes = ['dels', 'history', 'posts'];
-				let OPKeys = [],
-					m = r.multi();
-				for (let i = 0, l = suffixes.length; i < l; i++) {
-					OPKeys.push(`${key}:${suffixes[i]}`);
+			next => {
+				const m = redis.multi(),
+					OPKeys = [];
+				for (let suffix of ['history', 'posts']) {
+					OPKeys.push(`${key}:${suffix}`);
 				}
-				for (let i = 0, l = OPKeys.length; i < l; i++) {
-					m.exists(OPKeys[i]);
+				for (let key of OPKeys) {
+					m.exists(key);
 				}
-				m.exec(function(err, res) {
-					if (err)
-						return next(err);
-					next(null, res, OPKeys);
-				})
+				m.exec((err, res) => next(err, res, OPKeys));
 			},
-			function(res, OPKeys, next) {
-				let keys = keysToDel;
-				for (let i = 0, l = res.length; i < l; i++) {
+			(res, OPKeys, next) => {
+				for (let i = 0; i < res.length; i++) {
 					if (res[i])
-						keys.push(OPKeys[i]);
+						keysToDel.push(OPKeys[i]);
 				}
 
 				// Delete all keys
-				let m = r.multi();
-				for (let i = 0, l = keys.length; i < l; i++) {
-					m.del(keys[i]);
+				const m = redis.multi();
+				for (let key of keysToDel) {
+					m.del(key);
 				}
 				m.exec(next);
 			},
-			function(res, next) {
+			(res, next) =>
 				// Delete all images
 				async.each(filesToDel,
-					function(file, cb) {
-						fs.unlink(file, function(err) {
-							if (err)
-								return cb(err);
-							cb();
-						});
-					},
-					function(err) {
-						if (err)
-							return next(err);
-						next();
-					}
-				);
-			},
-			function(next) {
-				// Delete thread entry from the set
-				r.zrem(`tag:${tag_key(board)}:threads`, op, next);
-			},
-			function(res, next) {
+					(file, cb) => 
+						fs.unlink(file, err => cb(err)),
+					err => next(err)),
+			next => redis.zrem(`tag:${tag_key(board)}:threads`, op, next),
+			(res, next) => {
 				// Clear thread and post numbers from caches
-				for (let i = 0, l = nums.length; i < l; i++) {
-					delete OPs[nums];
+				for (let num of nums) {
+					delete OPs[num];
 				}
 				removeOPTag(op);
 				next();
@@ -1045,84 +1023,92 @@ class Yakusoku extends events.EventEmitter {
 			callback(null);
 	}
 	get_banner(cb) {
-		this.connect().get('banner:info', cb);
+		redis.get('banner:info', cb);
 	}
 	set_banner(message, cb) {
-		let r = this.connect(),
-			self = this;
-		r.set('banner:info', message, function(err) {
+		redis.set('banner:info', message, err => {
 			if (err)
 				return cb(err);
+			
 			// Dispatch new banner
-			let m = r.multi();
-			self._log(m, 0, common.UPDATE_BANNER, [message]);
+			const m = redis.multi();
+			this._log(m, 0, common.UPDATE_BANNER, [message]);
 			m.exec(cb);
 		});
 	}
-	modHandler(method, nums, cb) {
+	modHandler(kind, nums, cb) {
+		if (this.isContainmentBoard)
+			return false;
+		
 		// Group posts by thread for live publishes to the clients
-		let threads = {};
+		const threads = {};
 		for (let num of nums) {
 			const op = OPs[num];
 			if (!(op in threads))
 				threads[op] = [];
 			threads[op].push(num);
 		}
-		async.forEachOf(threads, this[method].bind(this), cb);
+		async.forEachOf(threads, (nums, op, cb) =>
+			this.handleModeration(nums, op, kind, cb), 
+		cb);
 		return true;
 	}
-	spoilerImages(nums, op, cb) {
-		let r = this.connect(),
-			m = r.multi(),
+	handleModeration(nums, op, kind, cb) {
+		const opts = moderationSpecs[kind],
+			{props, check, persist} = opts,
 			keys = [];
-		for (let num of nums) {
-			const key = postKey(num, op);
-			keys.push(key);
-			m.hmget(key, 'src', 'spoiler');
-		}
-		let self = this;
-		m.exec(function (err, data) {
-			if (err)
-				return cb(err);
-			let m = r.multi(),
-				updates = [];
-			for (let i = 0; i < data.length; i++) {
-				// No image or already spoilt
-				if (!data[i][0] || data[i][1])
-					continue;
-				const spoiler = common.pick_spoiler(-1).index;
-				m.hset(keys[i], 'spoiler', spoiler);
-				updates.push(nums[i], spoiler);
+		async.waterfall([
+			// Read required post properties from redis
+			next => {
+				const m = redis.multi();
+				for (let num of nums) {
+					const key = postKey(num, op);
+					keys.push(key);
+					const command = props.slice();
+					command.unshift(key);
+					m.hmget(command);
+				}
+				m.exec(next);
+			},
+			(res, next) => {
+				const m = redis.multi();
+				for (let i = 0; i < res.length; i++) {
+					// Check if post is eligible for moderation action
+					if (check(res[i]))
+						continue;
+					
+					// Persist to redis
+					const key = keys[i],
+						num = nums[i],
+						msg = [num];
+					persist(m, key, msg);
+					
+					// Live publish
+					this.logModeration(m, {key, op, kind, num, msg});
+				}
+				m.exec(next);
 			}
-			if (updates.length)
-				self._log(m, op, common.SPOILER_IMAGES, updates);
-			m.exec(cb);
-		});
+		], cb);
 	}
-	deleteImages(nums, op, cb) {
-		let r = this.connect(),
-			m = r.multi(),
-			keys = [],
-			self = this;
-		for (let num of nums) {
-			const key = postKey(num, op);
-			keys.push(key);
-			m.hmget(key, 'src', 'imgDeleted');
-		}
-		m.exec(function (err, data) {
-			if (err)
-				return cb(err);
-			let updates = [];
-			for (let i = 0; i < data.length; i++) {
-				// No image or already hidden
-				if (!data[i][0] || data[i][1])
-					continue;
-				m.hset(keys[i], 'imgDeleted', true);
-				updates.push(nums[i]);
+	logModeration(m, opts) {
+		const time = Date.now();
+		const info = {
+			time,
+			num: opts.num,
+			op: opts.op,
+			// Abstract the email as to not reveal it to all staff
+			ident: config.staff[this.ident.auth][this.ident.email],
+			kind: opts.kind
+		};
+
+		const stringified = JSON.stringify(info);
+		m.lpush(opts.key + ':mod', stringified);
+		m.zadd('modLog', time, stringified);
+
+		this._log(m, opts.op, opts.kind, opts.msg, {
+			augments: {
+				auth: info
 			}
-			if (updates.length)
-				self._log(m, op, common.DELETE_IMAGES, updates);
-			m.exec(cb);
 		});
 	}
 }
@@ -1135,115 +1121,88 @@ class Reader extends events.EventEmitter {
 		// Call the EventEmitter's constructor
 		super();
 		this.canModerate = caps.checkAuth('janitor', ident);
-		this.r = global.redis;
 	}
 	get_thread(tag, num, opts) {
-		let r = this.r;
-		const graveyard = tag === 'graveyard';
-		if (graveyard)
-			opts.showDead = true;
-		const key = (graveyard ? 'dead:' : 'thread:') + num;
-		let self = this;
-		r.hgetall(key, function(err, pre_post) {
+		const key = 'thread:' + num;
+		redis.hgetall(key, (err, pre_post) => {
 			if (err)
-				return self.emit('error', err);
+				return this.emit('error', err);
 			if (_.isEmpty(pre_post)) {
 				if (!opts.redirect)
-					return self.emit('nomatch');
-				r.hget('post:' + num, 'op', function(err, op) {
+					return this.emit('nomatch');
+				redis.hget('post:' + num, 'op', (err, op) => {
 					if (err)
-						self.emit('error', err);
+						this.emit('error', err);
 					else if (!op)
-						self.emit('nomatch');
+						this.emit('nomatch');
 					else
-						self.emit('redirect', op);
+						this.emit('redirect', op);
 				});
 				return;
 			}
 			let exists = true;
-			if (pre_post.hide && !opts.showDead)
-				exists = false;
 			const tags = parse_tags(pre_post.tags);
-			if (!graveyard && tags.indexOf(tag) < 0) {
-				/* XXX: Should redirect directly to correct thread */
+			if (tags.indexOf(tag) < 0) {
+				// XXX: Should redirect directly to correct thread
 				if (opts.redirect)
-					return self.emit('redirect', num, tags[0]);
-				else
-					exists = false;
+					return this.emit('redirect', num, tags[0]);
+				exists = false;
 			}
-			if (!exists) {
-				self.emit('nomatch');
-				return;
-			}
-			self.emit('begin', pre_post);
+			if (!exists || !this.formatPost(pre_post))
+				return this.emit('nomatch');
+			
+			this.emit('begin', pre_post);
 
-			pre_post.time = parseInt(pre_post.time, 10);
-
-			let nums, deadNums, opPost,
+			let nums, opPost,
 				total = 0;
 			const abbrev = opts.abbrev || 0;
 			async.waterfall(
 				[
-					function (next) {
-						self.with_body(key, pre_post, next);
-					},
-					function (fullPost, next) {
+					next => this.with_body(key, pre_post, next),
+					(fullPost, next) => {
 						opPost = fullPost;
-						let m = r.multi();
-						const postsKey = key + ':posts';
+						const m = redis.multi(),
+							postsKey = key + ':posts';
 
 						// order is important!
 						m.lrange(postsKey, -abbrev, -1);
+						
 						// The length of the above array is limited by the
 						// amount of posts we are retrieving. A total number
 						// of posts is quite useful.
 						m.llen(postsKey);
-						self.getExtras(m, key);
+						this.getExtras(m, key);
 						if (abbrev)
 							m.llen(postsKey);
-						if (opts.showDead) {
-							var deadKey = key + ':dels';
-							m.lrange(deadKey, -abbrev, -1);
-							if (abbrev)
-								m.llen(deadKey);
-						}
 						m.exec(next);
 					},
-					function (rs, next) {
+					(rs, next) => {
 						// get results in the same order as before
 						nums = rs.shift();
 						// NOTE: these are only the displayed replies, not
 						// all of them
 						opPost.replies = nums || [];
 						opPost.replyctr = parseInt(rs.shift(), 10) || 0;
-						self.parseExtras(rs, opPost);
+						this.parseExtras(rs, opPost);
 						if (abbrev)
 							total += parseInt(rs.shift(), 10);
-						if (opts.showDead) {
-							deadNums = rs.shift();
-							if (abbrev)
-								total += parseInt(rs.shift(), 10);
-						}
-
-						self.injectMnemonic(opPost);
-						extract(opPost);
+						
 						opPost.omit = Math.max(total - abbrev, 0);
 						opPost.hctr = parseInt(opPost.hctr, 10);
+						
 						// So we can pass a thread number on `endthread`
 						// emission
 						opts.op = opPost.num;
-						next(null);
+						next();
 					}
 				],
-				function (err) {
+				err => {
 					if (err)
-						return self.emit('error', err);
-					self.emit('thread', opPost);
+						return this.emit('error', err);
+					this.emit('thread', opPost);
 					if (opts.catalog)
-						return self.emit('end');
-					if (deadNums)
-						nums = self.merge_posts(nums, deadNums, abbrev);
-					self._get_each_reply(tag, 0, nums, opts);
+						return this.emit('end');
+					this._get_each_reply(tag, 0, nums, opts);
 				}
 			);
 		});
@@ -1252,6 +1211,8 @@ class Reader extends events.EventEmitter {
 		m.hgetall(key + ':links');
 		m.hgetall(key + ':backlinks');
 		m.lrange(key + ':dice', 0, -1);
+		if (this.canModerate)
+			m.lrange(key + ':mod', 0, -1);
 	}
 	parseExtras(res, post) {
 		for (let key of ['links', 'backlinks', 'dice']) {
@@ -1259,6 +1220,29 @@ class Reader extends events.EventEmitter {
 			if (prop)
 				post[key] = prop;
 		}
+
+		// Preserve chronological dice order
+		if (post.dice)
+			post.dice.reverse();
+		if (this.canModerate)
+			this.parseModerationInfo(res.shift(), post);
+	}
+	parseModerationInfo(info, post) {
+		if (!info.length)
+			return;
+		// Reverse array, so the log is orderred chronologically
+		post.mod = destringifyList(info.reverse());
+	}
+	formatPost(post) {
+		if (!this.canModerate) {
+			if (post.deleted)
+				return false;
+			if (post.imgDeleted)
+				imager.deleteImageProps(post);
+		}
+		this.injectMnemonic(post);
+		extract(post);
+		return true;
 	}
 	injectMnemonic(post) {
 		if (!this.canModerate)
@@ -1267,34 +1251,6 @@ class Reader extends events.EventEmitter {
 		if (mnemonic)
 			post.mnemonic = mnemonic;
 	}
-	merge_posts(nums, deadNums, abbrev) {
-		let i = nums.length - 1,
-			pi = deadNums.length - 1;
-		if (pi < 0)
-			return nums;
-		let merged = [];
-		while (!abbrev || merged.length < abbrev) {
-			if (i >= 0 && pi >= 0) {
-				const num = nums[i],
-					pNum = deadNums[pi];
-				if (parseInt(num, 10) > parseInt(pNum, 10)) {
-					merged.unshift(num);
-					i--;
-				}
-				else {
-					merged.unshift(pNum);
-					pi--;
-				}
-			}
-			else if (i >= 0)
-				merged.unshift(nums[i--]);
-			else if (pi >= 0)
-				merged.unshift(deadNums[pi--]);
-			else
-				break;
-		}
-		return merged;
-	}
 	_get_each_reply(tag, ix, nums, opts) {
 		if (!nums || ix >= nums.length) {
 			this.emit('endthread', opts.op);
@@ -1302,37 +1258,30 @@ class Reader extends events.EventEmitter {
 			return;
 		}
 		const num = parseInt(nums[ix], 10);
-		let self = this;
-		this.get_post('post', num, opts, function (err, post) {
+		this.get_post('post', num, (err, post) => {
 			if (err)
-				return self.emit('error', err);
+				return this.emit('error', err);
 			if (post)
-				self.emit('post', post);
-			self._get_each_reply(tag, ix + 1, nums, opts);
+				this.emit('post', post);
+			this._get_each_reply(tag, ix + 1, nums, opts);
 		});
 	}
-	get_post(kind, num, opts, cb) {
-		let r = this.r,
-			self = this;
-		const key = kind + ':' + num;
+	get_post(kind, num, cb) {
+		const key = `${kind}:${num}`;
 		async.waterfall([
-			function (next) {
-				let m = r.multi();
+			next => {
+				const m = redis.multi();
 				m.hgetall(key);
-				self.getExtras(m, key);
+				this.getExtras(m, key);
 				m.exec(next);
 			},
-			function (data, next) {
-				let pre_post = data.shift();
-				self.parseExtras(data, pre_post);
-				let exists = !(_.isEmpty(pre_post));
-				if (exists && pre_post.hide && !opts.showDead)
-					exists = false;
-				if (!exists)
-					return next(null, null);
+			(data, next) => {
+				const pre_post = data.shift();
+				this.parseExtras(data, pre_post);
+				if (_.isEmpty(pre_post))
+					return next();
 
 				pre_post.num = num;
-				pre_post.time = parseInt(pre_post.time, 10);
 				if (kind === 'post')
 					pre_post.op = parseInt(pre_post.op, 10);
 				else {
@@ -1342,16 +1291,12 @@ class Reader extends events.EventEmitter {
 					 */
 					//var tags = parse_tags(pre_post.tags);
 				}
-				self.with_body(key, pre_post, next);
+				this.with_body(key, pre_post, next);
 			},
-			function (post, next) {
+			(post, next) => {
 				if (post) {
-					self.injectMnemonic(post);
-
-					// Image is deleted and client not authenticated
-					if (post.imgDeleted && !self.canModerate)
-						imager.deleteImageProps(post);
-					extract(post);
+					if (!this.formatPost(post))
+						post = null;
 				}
 				next(null, post);
 			}
@@ -1360,9 +1305,8 @@ class Reader extends events.EventEmitter {
 	with_body(key, post, callback) {
 		if (post.body !== undefined)
 			return callback(null, post);
-
-		let r = this.r;
-		r.get(key + ':body', function(err, body) {
+		
+		redis.get(key + ':body', function(err, body) {
 			if (err)
 				return callback(err);
 			if (body !== null) {
@@ -1370,8 +1314,9 @@ class Reader extends events.EventEmitter {
 				post.editing = true;
 				return callback(null, post);
 			}
+			
 			// Race condition between finishing posts
-			r.hget(key, 'body', function(err, body) {
+			redis.hget(key, 'body', function(err, body) {
 				if (err)
 					return callback(err);
 				post.body = body;
@@ -1384,10 +1329,10 @@ class Reader extends events.EventEmitter {
 		const info = postInfo(num),
 			key = info.isOP ? 'thread' : 'post';
 		if (!caps.can_access_board(ident, info.board))
-			return cb(null);
-		this.get_post(key, num, {}, function(err, post) {
+			return cb();
+		this.get_post(key, num, function(err, post) {
 			if (err || !post)
-				return cb(null);
+				return cb();
 			cb(post);
 		})
 	}
@@ -1411,18 +1356,25 @@ function is_board (board) {
 }
 exports.is_board = is_board;
 
-function get_all_replies(r, op, cb) {
+function get_all_replies(op, cb) {
 	var key = 'thread:' + op;
-	r.lrange(key + ':posts', 0, -1, function(err, nums) {
+	redis.lrange(key + ':posts', 0, -1, function(err, nums) {
 		if (err)
 			return cb(err);
 		return cb(null, nums);
 	});
 }
 
+// Format post hash for passing to renderer and clients
 function extract(post, dontParseDice) {
-	delete post.ip;
-	post.num = parseInt(post.num, 10);
+	// Only used internally and should not be exported to clients
+	for (let key of ['ip', 'deleted', 'imgDeleted']) {
+		delete post[key];
+	}
+
+	for (let key of ['num', 'time']) {
+		post[key] = parseInt(post[key], 10);
+	}
 	imager.nestImageProps(post);
 	if (!dontParseDice)
 		amusement.parseDice(post);
@@ -1431,6 +1383,15 @@ function extract(post, dontParseDice) {
 function postKey(num, op) {
 	return `${op == num ? 'thread' : 'post'}:${num}`;
 }
+
+function destringifyList(list) {
+	let parsed = [];
+	for (let i = 0; i < list.length; i++) {
+		parsed[i] = JSON.parse(list[i]);
+	}
+	return parsed;
+}
+exports.destrigifyList = destringifyList;
 
 function tag_key(tag) {
 	return tag.length + ':' + tag;

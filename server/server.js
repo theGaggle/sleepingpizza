@@ -1,18 +1,6 @@
 /*
 Core server module and application entry point
  */
-'use strict';
-
-let config = require('../config');
-// Longer stack traces
-if (config.DEBUG)
-	Error.stackTraceLimit = 100;
-
-// Read command line arguments. Modifies ../configure, so loaded right after it.
-let opts = require('./opts');
-if (require.main == module)
-	opts.parse_args();
-opts.load_defaults();
 
 // Several modules depend on the state module and a redis connection. Load
 // those first.
@@ -25,6 +13,7 @@ let _ = require('underscore'),
     caps = require('./caps'),
     check = require('./msgcheck'),
     common = require('../common/index'),
+	config = require('../config'),
 	cookie = require('cookie'),
     fs = require('fs'),
     hooks = require('../util/hooks'),
@@ -255,16 +244,9 @@ dispatcher[common.INSERT_POST] = function (msg, client) {
 	return true;
 };
 
-function inactive_board_check(client) {
-	return caps.checkAuth('janitor', client.ident)
-		|| config.READ_ONLY_BOARDS.indexOf(client.board) === -1;
-}
-
 function allocate_post(msg, client, callback) {
 	if (client.post)
 		return callback(Muggle("Already have a post."));
-	if (!inactive_board_check(client))
-		return callback(Muggle("Can't post here."));
 	var post = {time: Date.now(), nonce: msg.nonce};
 	var body = '';
 	var ip = client.ident.ip;
@@ -536,11 +518,6 @@ function hot_filter(frag) {
 	return frag;
 }
 
-if (config.DEBUG) {
-	winston.remove(winston.transports.Console);
-	winston.add(winston.transports.Console, {level: 'verbose'});
-}
-
 function start_server() {
 	var is_unix_socket = (typeof config.LISTEN_PORT == 'string');
 	if (is_unix_socket) {
@@ -619,41 +596,31 @@ function processFileSetup() {
 	}
 }
 
-if (require.main == module) {
-	if (config.DEBUG) {
-		winston.warn("Running in (insecure) debug mode.");
-		winston.warn("Do not use on the public internet.");
-	}
-	if (!process.getuid())
-		throw new Error("Refusing to run as root.");
-	if (!tripcode.setSalt(config.SECURE_SALT))
-		throw "Bad SECURE_SALT";
-	async.series(
-		[
-			imager.make_media_dirs,
-			setup_imager_relay,
-			STATE.reload_hot_resources,
-			db.track_OPs
-		],
-		function (err) {
+if (!tripcode.setSalt(config.SECURE_SALT))
+	throw "Bad SECURE_SALT";
+async.series(
+	[
+		imager.make_media_dirs,
+		setup_imager_relay,
+		STATE.reload_hot_resources,
+		db.track_OPs
+	],
+	function (err) {
+		if (err)
+			throw err;
+		var yaku = new db.Yakusoku(null, db.UPKEEP_IDENT);
+		var onegai;
+		var writes = [];
+		if (!config.READ_ONLY) {
+			writes.push(yaku.finish_all.bind(yaku));
+			onegai = new imager.Onegai;
+			writes.push(onegai.delete_temporaries.bind(onegai));
+		}
+		async.series(writes, function (err) {
 			if (err)
 				throw err;
-			var yaku = new db.Yakusoku(null, db.UPKEEP_IDENT);
-			var onegai;
-			var writes = [];
-			if (!config.READ_ONLY) {
-				writes.push(yaku.finish_all.bind(yaku));
-				onegai = new imager.Onegai;
-				writes.push(onegai.delete_temporaries.bind(onegai));
-			}
-			async.series(writes, function (err) {
-				if (err)
-					throw err;
-				yaku.disconnect();
-				if (onegai)
-					onegai.disconnect();
-				process.nextTick(start_server);
-			});
-		}
-	);
-}
+			yaku.disconnect();
+			process.nextTick(start_server);
+		});
+	}
+);

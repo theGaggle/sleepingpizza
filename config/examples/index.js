@@ -35,12 +35,13 @@ module.exports = {
 
 	BOARDS: ['moe', 'gar', 'meta', 'staff'],
 	DEFAULT_BOARD: 'moe',
-	READ_ONLY_BOARDS: ['graveyard'],
 // Add links to the navigator menu to custom URLs
 	PSUEDO_BOARDS: [
 		['g', 'https://google.com']
 	],
 	STAFF_BOARD: 'staff',
+// Boards with disabled moderation
+	containment_boards: ['meta'],
 
 // Language settings. You can easily map more. See ./lang/
 	LANGS: ['en_GB', 'pt_BR', 'es_ES'],

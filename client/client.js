@@ -136,24 +136,7 @@ _.extend(dispatcher, {
 		});
 	},
 	[common.DELETE_POSTS](msg) {
-		for (let num of msg) {
-			modelHandler(num, model => model.remove());
-		}
-	},
-	[common.DELETE_THREAD](msg, op) {
-		delete state.syncs[op];
-		delete state.ownPosts[op];
-
-		let postModel = main.request('postModel');
-		if (postModel) {
-			const num = postModel.get('num');
-			if ((postModel.get('op') || num) === op)
-				main.postSM.feed('done');
-			if (num === op)
-				return;
-		}
-
-		modelHandler(op, model => model.remove());
+		modelHandler(msg[0], model => model.deletePost(msg[1]));
 	},
 	[common.LOCK_THREAD](msg, op) {
 		modelHandler(op, model => model.toggleLocked(true));
@@ -162,14 +145,10 @@ _.extend(dispatcher, {
 		modelHandler(op, model => model.toggleLocked(false));
 	},
 	[common.DELETE_IMAGES](msg) {
-		for (let num of msg) {
-			modelHandler(num, model => model.removeImage());
-		}
+		modelHandler(msg[0], model => model.removeImage(msg[1]));
 	},
 	[common.SPOILER_IMAGES](msg) {
-		for (let i = 0; i < msg.length; i += 2) {
-			modelHandler(msg[i], model => model.setSpoiler(msg[i + 1]));
-		}
+		modelHandler(msg[0], model => model.setSpoiler(msg[1], msg[2]));
 	},
 	[common.BACKLINK](msg) {
 		modelHandler(msg[0], model => model.addBacklink(msg[1], msg[2]));

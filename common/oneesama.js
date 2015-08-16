@@ -2,8 +2,6 @@
  Rendering singleton both server and client-side
  */
 
-'use strict';
-
 let _ = require('underscore'),
 	imports = require('./imports'),
 	index = require('./index'),
@@ -140,15 +138,19 @@ class OneeSama {
 	// Render common post components
 	monogatari(data) {
 		let tale = {header: this.header(data)};
-		this.dice = data.dice;
+
+		// Shallow copy, as to not modify Backbone model values
+		this.dice = data.dice && data.dice.slice();
 		var body = this.body(data.body);
 		tale.body = [
 			safe('<blockquote>'),
 			body,
 			safe(`</blockquote><small>${this.backlinks(data.backlinks)}</small>`)
 		];
+		if (data.mod)
+			body.unshift(safe(this.modInfo(data.mod)));
 		let image = data.image;
-		if (image && !data.hideimg) {
+		if (image) {
 			// Larger thumbnails for thread images
 			image.large = !data.op;
 			tale.image = this.image(image);
@@ -285,6 +287,15 @@ class OneeSama {
 					${this.lang.last} ${this.lastN}
 				</a>
 			</span>`;
+	}
+	// Append moderation information. Only exposed to authenticated staff.
+	modInfo(info) {
+		let html = '<b class="modLog admin">';
+		for (let action of info) {
+			html += `${this.lang.mod.formatLog(action)}<br>`;
+		}
+		html += '<br></b>';
+		return html;
 	}
 	// Render full blockqoute contents
 	body(body) {
@@ -425,20 +436,17 @@ class OneeSama {
 		if (!this.dice)
 			return this.eLinkify ? this.linkify(text) : this.callback(text);
 
-		// Shallow copy, so we can update multiple views at a time. Mainly
-		// for live post previews
-		let dice = this.dice.slice && this.dice.slice();
 		const bits = text.split(util.dice_re);
-		for (let i = 0, len = bits.length; i < len; i++) {
+		for (let i = 0; i < bits.length; i++) {
 			const bit = bits[i];
 			if (!(i % 2) || !util.parse_dice(bit))
 				this.eLinkify ? this.linkify(bit) : this.callback(bit);
 			else if (this.queueRoll)
 				this.queueRoll(bit);
-			else if (!dice[0])
+			else if (!this.dice[0])
 				this.eLinkify ? this.linkify(bit) : this.callback(bit);
 			else {
-				let d = dice.shift();
+				let d = this.dice.shift();
 				this.callback(safe('<strong>'));
 				this.strong = true; // for client DOM insertion
 				this.callback(util.readable_dice(bit, d));
@@ -486,7 +494,6 @@ class OneeSama {
 	// Image header
 	figcaption(data, reveal) {
 		const list = util.commaList([
-			data.imgDeleted &&`<b class="mod">${this.lang.mod.imgDeleted}</b>`,
 			data.audio && '\u266B',
 			data.length,
 			util.readable_filesize(data.size),

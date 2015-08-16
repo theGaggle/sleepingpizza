@@ -1,10 +1,8 @@
 /*
 Manages client read/write permissions
  */
-'use strict';
 
 var async = require('async'),
-    authcommon = require('../admin/common'),
     common = require('../common/index'),
     config = require('../config'),
     db = require('../db'),
@@ -13,8 +11,6 @@ var async = require('async'),
 var RANGES = require('./state').dbCache.ranges;
 
 function can_access_board(ident, board) {
-	if (board == 'graveyard' && checkAuth('admin', ident))
-		return true;
 	if (board == config.STAFF_BOARD && !checkAuth('janitor', ident))
 		return false;
 	if (ident.ban || ident.suspension)
@@ -98,22 +94,6 @@ function range_lookup(ranges, num) {
 	}
 	return result;
 }
-
-hooks.hook('reloadHot', function (hot, cb) {
-	var r = global.redis;
-	async.forEach(authcommon.suspensionKeys, function (key, cb) {
-		global.redis.smembers('hot:' + key, function (err, ranges) {
-			if (err)
-				return cb(err);
-			if (key == 'suspensions')
-				ranges = parse_suspensions(ranges);
-			var up = key.toUpperCase();
-			hot[up] = (hot[up] || []).concat(ranges || []);
-			RANGES[key] = parse_ranges(hot[up]);
-			cb(null);
-		});
-	}, cb);
-});
 
 function parse_suspensions(suspensions) {
 	if (!suspensions)

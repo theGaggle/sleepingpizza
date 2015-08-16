@@ -28,7 +28,6 @@ function report(reporter_ident, op, num, cb) {
 
 	var reporter = admin.genMnemonic(reporter_ident.ip) || '???';
 
-	var yaku = new db.Yakusoku(board, {auth: 'moderator'});
 	var reader = new db.Reader({auth: 'moderator'});
 	var kind = op == num ? 'thread' : 'post';
 	reader.get_post(kind, num, {}, function (err, post) {
@@ -50,7 +49,7 @@ function report(reporter_ident, op, num, cb) {
 		var html = ['Offender: ', safe('<b>'), name, safe('</b>')];
 
 		var img;
-		if (post.image && !post.hideimg)
+		if (post.image)
 			img = image_preview(post.image);
 		if (img) {
 			body += '\nThumbnail: ' + img.src;

@@ -1,13 +1,11 @@
-'use strict';
-
 // Define vars both on server and client
 var _, common, config, DEF,
 	isNode = typeof navigator === 'undefined';
 
 if (isNode) {
 	_ = require('underscore');
-	common = require('../common/index');
-	config = require('../config');
+	common = require('../../common/index');
+	config = require('../../config/index');
 	DEF = exports;
 }
 else {

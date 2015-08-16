@@ -1,5 +1,3 @@
-'use strict';
-
 var async = require('async'),
     config = require('../config'),
     child_process = require('child_process'),
@@ -14,7 +12,7 @@ exports.Onegai = db.Onegai;
 exports.config = config;
 
 const image_attrs = ('src thumb ext dims size MD5 SHA1 hash imgnm spoiler'
-	+ ' apng mid audio length imgDeleted').split(' ');
+	+ ' apng mid audio length').split(' ');
 exports.image_attrs = image_attrs;
 
 function nestImageProps(post) {
@@ -90,30 +88,6 @@ function validate_alloc(alloc) {
 	return true;
 }
 
-
-hooks.hook("buryImage", function (info, callback) {
-	if (!info.src)
-		return callback(null);
-	/* Just in case */
-	var m = /^\d+\w*\.\w+$/;
-	if (!info.src.match(m))
-		return callback(etc.Muggle('Invalid image.'));
-	var mvs = [mv.bind(null, 'src', info.src)];
-	function try_thumb(path, t) {
-		if (!t)
-			return;
-		if (!t.match(m))
-			return callback(etc.Muggle('Invalid thumbnail.'));
-		mvs.push(mv.bind(null, path, t));
-	}
-	try_thumb('thumb', info.thumb);
-	try_thumb('mid', info.mid);
-	async.parallel(mvs, callback);
-	function mv(p, nm, cb) {
-		etc.movex(media_path(p, nm), dead_path(p, nm), cb);
-	}
-});
-
 function is_image(image) {
 	return image && image.src;
 }
@@ -123,29 +97,16 @@ function media_path(dir, filename) {
 }
 exports.media_path = media_path;
 
-function dead_path(dir, filename) {
-	return path.join(config.MEDIA_DIRS.dead, dir, filename);
-}
-
-function make_dir(base, key, cb) {
-	var dir = base ? path.join(base, key) : config.MEDIA_DIRS[key];
-	etc.checked_mkdir(dir, cb);
-}
-exports._make_media_dir = make_dir;
-
 function make_media_dirs (cb) {
-	var keys = ['src', 'thumb', 'dead', 'tmp'];
+	const keys = ['src', 'thumb', 'tmp'];
 	if (config.EXTRA_MID_THUMBNAILS)
 		keys.push('mid');
-	async.forEach(keys, make_dir.bind(null, null), function (err) {
-		if (err)
-			return cb(err);
-		var dead = config.MEDIA_DIRS.dead;
-		var keys = ['src', 'thumb'];
-		if (config.EXTRA_MID_THUMBNAILS)
-			keys.push('mid');
-		async.forEach(keys, make_dir.bind(null, dead), cb);
-	});
+	async.forEach(keys, 
+		(key, cb) =>
+			fs.mkdir(config.MEDIA_DIRS[key], err =>
+				cb(err && err.code == 'EEXIST' ? null : err)),
+		err => cb(err)
+	);
 }
 exports.make_media_dirs = make_media_dirs;
 
@@ -159,7 +120,6 @@ exports.squish_MD5 = squish_MD5;
 function obtain_image_alloc (id, cb) {
 	var onegai = new db.Onegai;
 	onegai.obtain_image_alloc(id, function (err, alloc) {
-		onegai.disconnect();
 		if (err)
 			return cb(err);
 
@@ -178,7 +138,6 @@ function commit_image_alloc (alloc, cb) {
 
 		var o = new db.Onegai;
 		o.commit_image_alloc(alloc, function (err) {
-			o.disconnect();
 			cb(err);
 		});
 	});

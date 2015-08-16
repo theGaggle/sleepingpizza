@@ -12,7 +12,7 @@ var server;
 var start_server = _.debounce(function() {
 	if (server)
 		server.kill('SIGTERM');
-	server = child_process.spawn('node', ['server/server.js']);
+	server = child_process.spawn('node', ['index']);
 	server.stdout.pipe(process.stdout);
 	server.stderr.pipe(process.stderr);
 }, 2000);
@@ -56,12 +56,15 @@ watch(deps.server, function(file) {
 	if (!serverExclude.test(file))
 		start_server();
 });
+watch('admin', function () {
+	build(['mod'], start_server);
+});
 watch('common', fullRestart);
 watch('lang', fullRestart);
 watch('gulpfile.js', function() {
 	buildAll(reload_state);
 });
-['client', 'css', 'mod'].forEach(function(task) {
+['client', 'css'].forEach(function(task) {
 	watch(deps[task], _.debounce(function() {
 		build([task], reload_state);
 	}), 5000);

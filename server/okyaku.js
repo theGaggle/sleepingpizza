@@ -1,7 +1,6 @@
 /*
  Websocket handler module
  */
-'use strict';
 
 var _ = require('underscore'),
 	async = require('async'),
@@ -139,8 +138,7 @@ OK.kotowaru = function (error) {
 		msg = error.most_precise_error_message();
 		error = error.deepest_reason();
 	}
-	winston.error('Error by ' + JSON.stringify(this.ident) + ': '
-			+ (error || msg));
+	winston.error(`Error by ${JSON.stringify(this.ident)}: ${error || msg}`);
 	this.send([0, common.INVALID, msg]);
 	this.synced = false;
 };
