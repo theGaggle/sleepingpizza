@@ -14,8 +14,9 @@ let postForm, postModel;
  The variable gets overwritten, so a simple refference will not do. Calling a
  fucntion to retrieve the var each time solves the problem.
  */
-main.reply('postForm', () => postForm);
-main.reply('postModel', () => postModel);
+main.reply('postForm', () => postForm)
+	.reply('postModel', () => postModel)
+	.reply('postForm:indentity', () => postForm && postForm.renderIdentity());
 
 const uploadingMessage = 'Uploading...';
 
@@ -316,6 +317,7 @@ var ComposerView = Backbone.View.extend({
 			$b.text(haveTrip ? '' : main.lang.anon);
 		if (haveTrip)
 			$b.append(' <code>!?</code>');
+		
 		// Insert staff title
 		main.oneeSama.trigger('fillMyName', $b);
 		const email = main.$email.val().trim();
@@ -607,14 +609,11 @@ var ComposerView = Backbone.View.extend({
 		// Either get an allocation or send the committed text
 		const attrs = this.model.attributes;
 		if (!attrs.num && !attrs.sentAllocRequest) {
-			main.request('send', [
-				common.INSERT_POST,
-				this.allocationMessage(text, null)
-			]);
+			main.send([common.INSERT_POST, this.allocationMessage(text, null)]);
 			this.model.set({sentAllocRequest: true});
 		}
 		else if (attrs.num)
-			main.request('send', text);
+			main.send(text);
 		else
 			this.pending += text;
 
@@ -688,7 +687,7 @@ var ComposerView = Backbone.View.extend({
 					'margin-left': '', 'padding-left': ''
 				}
 				);
-				main.request('send', [common.FINISH_POST]);
+				main.send([common.FINISH_POST]);
 				this.preserve = true;
 				if (this.isThread)
 					this.$el.append(main.oneeSama.replyBox());
@@ -715,7 +714,7 @@ var ComposerView = Backbone.View.extend({
 	// Send any unstaged words
 	flushPending() {
 		if (this.pending) {
-			main.request('send', this.pending);
+			main.send(this.pending);
 			this.pending = '';
 		}
 	},
@@ -820,15 +819,11 @@ var ComposerView = Backbone.View.extend({
 		if (attrs.cancelled)
 			return;
 		if (!attrs.num && !attrs.sentAllocRequest) {
-			main.request('send', [
-				common.INSERT_POST,
-				this.allocationMessage(null, msg)
-			]);
+			main.send([common.INSERT_POST, this.allocationMessage(null, msg)]);
 			this.model.set({sentAllocRequest: true});
 		}
-		else {
-			main.request('send', [common.INSERT_IMAGE, msg]);
-		}
+		else
+			main.send([common.INSERT_IMAGE, msg]);
 	},
 	uploadError(msg) {
 		if (this.model.get('cancelled'))
@@ -885,6 +880,7 @@ var ComposerView = Backbone.View.extend({
 	// Overrides automatic image expansion, if any
 	autoExpandImage() {}
 });
+exports.ComposerView = ComposerView;
 
 function openPostBox(num) {
 	let $a = main.$threads.find('#' + num);

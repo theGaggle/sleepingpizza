@@ -38,17 +38,17 @@ var lang = {
 
 	// Moderation language map
 	mod: {
+		title: ['Title', 'Display staff title on new posts'],
 		clearSelection: ['Clear', 'Clear selected posts'],
 		spoilerImages: ['Spoiler', 'Spoiler selected post images'],
 		deleteImages: ['Del Img', 'Delete selected post images'],
 		deletePosts: ['Del Post', 'Delete selected posts'],
-		lockThread: ['Lock', 'Lock selected threads'],
+		lockThreads: ['Lock', 'Lock/unlock selected threads'],
 		toggleMnemonics: ['Mnemonics', 'Toggle mnemonic display'],
 		sendNotification: [
 			'Notification',
 			'Send notifaction message to all clients'
 		],
-		dispatchFun: ['Fun', 'Execute arbitrary JavaScript on all clients'],
 		renderPanel: ['Panel', 'Toggle administrator panel display'],
 		modLog: ['Log', 'Show moderation log'],
 		placeholders: {
@@ -59,6 +59,8 @@ var lang = {
 		7: 'Image spoilered',
 		8: 'Image deleted',
 		9: 'Post deleted',
+		10: 'Thread locked',
+		11: 'Thread unlocked',
 
 		// Formatting function for moderation messages
 		formatLog: function (act) {

@@ -161,16 +161,6 @@ function is_sage(email) {
 }
 exports.is_sage = is_sage;
 
-// TODO: Move to admin.js, when I get to it
-function override(obj, orig, upgrade) {
-	var origFunc = obj[orig];
-	obj[orig] = function() {
-		var args = [].slice.apply(arguments);
-		args.unshift(origFunc);
-		return upgrade.apply(this, args);
-	};
-}
-
 // Construct hash command regex pattern
 var dice_re = '(#flip|#8ball|#sw(?:\\d{1,2}:)?\\d{1,2}:\\d{1,2}(?:[+-]\\d+)?' +
 	'|#\\d{0,2}d\\d{1,4}(?:[+-]\\d{1,4})?';
@@ -466,3 +456,10 @@ function commaList(items) {
 	return html;
 }
 exports.commaList = commaList;
+
+// Acertains client has the proper authorisation level or higher
+function checkAuth(type, ident) {
+	const levels = ['janitor', 'moderator', 'admin'];
+	return levels.indexOf(type) <= levels.indexOf(ident.auth);
+}
+exports.checkAuth = checkAuth;

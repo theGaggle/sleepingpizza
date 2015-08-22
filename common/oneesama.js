@@ -137,19 +137,18 @@ class OneeSama {
 	}
 	// Render common post components
 	monogatari(data) {
-		let tale = {header: this.header(data)};
+		const tale = {header: this.header(data)};
 
 		// Shallow copy, as to not modify Backbone model values
 		this.dice = data.dice && data.dice.slice();
-		var body = this.body(data.body);
 		tale.body = [
 			safe('<blockquote>'),
-			body,
+			this.body(data.body),
 			safe(`</blockquote><small>${this.backlinks(data.backlinks)}</small>`)
 		];
 		if (data.mod)
-			body.unshift(safe(this.modInfo(data.mod)));
-		let image = data.image;
+			tale.body.unshift(safe(this.modInfo(data.mod)));
+		const {image} = data;
 		if (image) {
 			// Larger thumbnails for thread images
 			image.large = !data.op;
@@ -173,16 +172,17 @@ class OneeSama {
 			</header>`;
 	}
 	name(data) {
-		let html = '';
-		const auth = data.auth,
-			email = data.email;
-		html += parseHTML`<b class="name${auth && ` ${auth.toLowerCase()}`}">`;
+		let html = '<b class="name';
+		const {auth, email} = data;
+		if (auth)
+			html += ` ${auth === 'admin' ? 'admin' : 'moderator'}`;
+		html += '">';
 		if (email) {
-			html += parseHTML
-				`<a class="email"
-					href="mailto:${encodeURI(email)}"
-					target="_blank"
-				>`
+			html += parseHTML `<a ${{
+				class: 'email',
+				href: 'mailto:' + encodeURI(email),
+				target: 'blank'
+			}}>`;
 		}
 		html += this.resolveName(data);
 		if (email)
@@ -194,9 +194,7 @@ class OneeSama {
 	}
 	resolveName(data) {
 		let html = '';
-		const trip = data.trip,
-			name = data.name,
-			auth = data.auth;
+		const {trip, name, auth} = data;
 		if (name || !trip) {
 			if (name)
 				html += escape(name);
@@ -208,7 +206,7 @@ class OneeSama {
 		if (trip)
 			html += `<code>${escape(trip)}</code>`;
 		if (auth)
-			html += ` ## ${imports.hotConfig[auth]}`;
+			html += ` ## ${imports.hotConfig.staff_aliases[auth]}`;
 		return html;
 	}
 	time(time) {
@@ -294,7 +292,7 @@ class OneeSama {
 		for (let action of info) {
 			html += `${this.lang.mod.formatLog(action)}<br>`;
 		}
-		html += '<br></b>';
+		html += '</b>';
 		return html;
 	}
 	// Render full blockqoute contents

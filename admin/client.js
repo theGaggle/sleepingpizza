@@ -2,9 +2,9 @@
 Client-side administration logic
  */
 
-let	main = require('main'),
+const main = require('main'),
 	{$, $threads, _, Backbone, common, config, dispatcher, etc, lang,
-		oneeSama} = main,
+		oneeSama, state} = main,
 	{parseHTML} = common;
 
 // Only used to affect some client rendering practises. Anything actually
@@ -39,18 +39,22 @@ let ToolboxView = Backbone.View.extend({
 		this.render();
 	},
 	render() {
-		let specs = this.specs = [
+		const specs = this.specs = [
 			'clearSelection',
 			'spoilerImages',
 			'deleteImages',
 			'deletePosts',
-			'lockThread',
 			'toggleMnemonics',
 			'modLog'
 		];
-		if (ident.auth === 'admin')
-			specs.push('sendNotification', 'dispatchFun', 'renderPanel');
-
+		if (common.checkAuth('moderator', ident)) {
+			specs.push('lockThreads');
+			if (common.checkAuth('admin', ident)) {
+				specs.push('sendNotification'
+					/* Useless for now , 'renderPanel'*/);
+			}
+		}
+		
 		let controls = '<span>';
 		for (let i = 0; i < specs.length; i++) {
 			const ln = lang.mod[specs[i]];
@@ -104,7 +108,7 @@ let ToolboxView = Backbone.View.extend({
 		this[this.specs[event.target.getAttribute('data-kind')]](event);
 	},
 	getSelected() {
-		let checked = [];
+		const checked = [];
 		this.loopCheckboxes(function (el) {
 			if (el.checked)
 				checked.push(etc.getID(el));
@@ -128,7 +132,7 @@ let ToolboxView = Backbone.View.extend({
 		localStorage.noMnemonics = !hide;
 	},
 	send(type) {
-		main.request('send', [common[type], ...this.getSelected()]);
+		main.send([common[type], ...this.getSelected()]);
 	},
 	spoilerImages() {
 		this.send('SPOILER_IMAGES');
@@ -149,7 +153,7 @@ let ToolboxView = Backbone.View.extend({
 			fields: ['msg'],
 			handler(msg) {
 				self.notificationBox = null;
-				main.request('send', [common.NOTIFICATION, msg[0]]);
+				main.send([common.NOTIFICATION, msg[0]]);
 			}
 		});
 	},
@@ -163,6 +167,18 @@ let ToolboxView = Backbone.View.extend({
 	},
 	deletePosts() {
 		this.send('DELETE_POSTS');
+	},
+	lockThreads() {
+		for (let num of this.getSelected()) {
+			const model = state.posts.get(num);
+			// Model exists and is an OP
+			if (!model || model.get('op'))
+				continue;
+			main.send([
+				common[!model.get('locked') ? 'LOCK_THREAD' : 'UNLOCK_THREAD'],
+				num
+			]);
+		}
 	}
 });
 
@@ -222,7 +238,7 @@ let ModLogView = Backbone.View.extend({
 		// Register websocket handler
 		dispatcher[common.MOD_LOG] = msg => this.render(msg[0]);
 		// Request moderation log
-		main.request('send', [common.MOD_LOG]);
+		main.send([common.MOD_LOG]);
 	},
 	render(info) {
 		if (!info.length) {
@@ -254,3 +270,35 @@ let ModLogView = Backbone.View.extend({
 		this.remove();
 	}
 });
+
+// Display title on post
+main.$name.after(parseHTML
+	`<label title="${lang.mod.title[1]}" class="mod">
+		<input type="checkbox" id="authName">
+		 ${lang.mod.title[0]}
+	 </label>`);
+const $authName = $('#authName');
+
+oneeSama.hook('fillMyName', function ($el) {
+	const checked = $authName[0].checked;
+	$el.toggleClass(ident.auth === 'admin' ? 'admin' : 'moderator', checked);
+	if (checked)
+		$el.append(' ## ' + state.hotConfig.get('staff_aliases')[ident.auth]);
+});
+$authName.change(() => main.request('postForm:indentity'));
+
+// Extend default allocation request
+override(main.posts.posting.ComposerView.prototype, 'allocationMessage',
+	function (orig, ...args) {
+		const msg = orig.call(this, ...args);
+		if ($authName[0].checked)
+			msg.auth = ident.auth;
+		return msg;
+	});
+
+function override(parent, method, upgrade) {
+	const orig = parent[method];
+	parent[method] = function (...args) {
+		return upgrade.call(this, orig, ...args);
+	}
+}
