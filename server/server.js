@@ -4,10 +4,10 @@ Core server module and application entry point
 
 // Several modules depend on the state module and a redis connection. Load
 // those first.
-let STATE = require('./state'),
+const STATE = require('./state'),
 	db = require('../db');
 
-let _ = require('underscore'),
+const _ = require('underscore'),
     amusement = require('./amusement'),
     async = require('async'),
     caps = require('./caps'),
@@ -24,11 +24,10 @@ let _ = require('underscore'),
 	path = require('path'),
     persona = require('./persona'),
     Render = require('./render'),
-    tripcode = require('./tripcode/tripcode'),
+    tripcode = require('bindings')('tripcode'),
     urlParse = require('url').parse,
     winston = require('winston');
 
-require('../admin');
 require('../imager/daemon'); // preload and confirm it works
 var radio;
 if (config.RADIO)
@@ -538,6 +537,10 @@ function start_server() {
 	process.on('SIGHUP', hot_reloader);
 	db.on_pub('reloadHot', hot_reloader);
 
+	// Read global push messages from `scripts/send.js` and dispatch to all
+	// clients
+	db.on_pub('push', (chan, msg) => okyaku.push(JSON.parse(msg)));
+
 	process.nextTick(processFileSetup);
 
 	winston.info('Listening on '
@@ -548,12 +551,10 @@ function start_server() {
 
 function hot_reloader() {
 	STATE.reload_hot_resources(function (err) {
-		if (err) {
-			winston.error("Error trying to reload:");
-			winston.error(err);
-			return;
-		}
+		if (err)
+			return winston.error('Error trying to reload:', err);
 		okyaku.scan_client_caps();
+		amusement.pushJS();
 		// Push new hot variable hash to all clients
 		okyaku.push([0, common.HOT_INJECTION, false, STATE.clientConfigHash]);
 		winston.info('Reloaded initial state.');
@@ -564,33 +565,15 @@ function processFileSetup() {
 	const pidFile = config.PID_FILE;
 	fs.writeFile(pidFile, process.pid+'\n', function (err) {
 		if (err)
-			return winston.warn("Couldn't write pid: " + err);
+			return winston.warn("Couldn't write pid: ", err);
 		process.once('SIGINT', deleteFiles);
 		process.once('SIGTERM', deleteFiles);
-		winston.info('PID ' + process.pid + ' written in ' + pidFile);
+		winston.info(`PID ${process.pid} written in ${pidFile}`);
 	});
-
-	// Accept messages through unix socket and push to all clients
-	const socketPath = path.join('server', '.socket-' + process.pid);
-	// Remove old socket, if any
-	try {
-		fs.unlinkSync(socketPath);
-	}
-	catch (e) {}
-	const socket = net.createServer(function(client) {
-		client.on('data', function(data) {
-			try {
-				okyaku.push(JSON.parse(data));
-			}
-			catch (e) {}
-		});
-	});
-	socket.listen(socketPath);
 
 	function deleteFiles() {
 		try {
 			fs.unlinkSync(pidFile);
-			fs.unlinkSync(socketPath)
 		}
 		catch (e) {}
 		process.exit();

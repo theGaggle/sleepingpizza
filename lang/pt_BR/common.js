@@ -23,7 +23,7 @@ var lang = {
 	locked_to_bottom: 'Travado ao rodapé',
 	you: '(You)',
 	done: 'Feito',
-	send: 'Send',
+	send: 'Enviar',
 
 	// Time-related
 	week: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'],
@@ -36,35 +36,62 @@ var lang = {
 	unit_month: 'mês',
 	unit_year: 'ano',
 
+	// Websocket syncronisation status
+	sync: {
+		notSynced: 'Dessincronizado',
+		connecting: 'Conectando',
+		syncing: 'Sincronizando',
+		synced: 'Sincronizado',
+		dropped: 'Caiu',
+		reconnecting: 'Reconectando'
+	},
+
 	// Moderation language map
 	mod: {
-		title: ['Title', 'Display staff title on new posts'],
-		clearSelection: ['Clear', 'Clear selected posts'],
-		spoilerImages: ['Spoiler', 'Spoiler selected post images'],
-		deleteImages: ['Del Img', 'Delete selected post images'],
-		deletePosts: ['Del Post', 'Delete selected posts'],
-		lockThreads: ['Lock', 'Lock/unlock selected threads'],
-		toggleMnemonics: ['Mnemonics', 'Toggle mnemonic display'],
+		title: ['Título', 'Mostra o título de staff nos posts'],
+		clearSelection: ['Limpar', 'Limpa a seleção de posts'],
+		spoilerImages: ['Spoiler', 'Adiciona spoiler na imagem dos posts selecionados'],
+		deleteImages: ['Del Img', 'Deleta a imagem do post selecionado'],
+		deletePosts: ['Del Post', 'Deleta o post selecionado'],
+		lockThreads: ['Trancar', 'Tranca/destranca o tópico selecionado'],
+		toggleMnemonics: ['Mnemonics', 'Ativa a exibição de mnemonics'],
 		sendNotification: [
-			'Notification',
-			'Send notifaction message to all clients'
+			'Notificação',
+			'Envia uma mensagem de notificação para todos os clientes'
 		],
-		renderPanel: ['Panel', 'Toggle administrator panel display'],
-		modLog: ['Log', 'Show moderation log'],
+		renderPanel: ['Painel', 'Ativa a exibição do painel de administração'],
+		ban: ['Ban', 'Ban poster(s) for the selected post(s)'],
+		modLog: ['Reg', 'Mostra o registro de moderação'],
+		displayBan: [
+			'Display',
+			'Append a public \'USER WAS BANNED FOR THIS POST\' message'
+		],
+		banMessage: 'USER WAS BANNED FOR THIS POST',
+		unban: 'Unban',
 		placeholders: {
-			msg: 'Message'
+			msg: 'Mensagem',
+			days: 'd',
+			hours: 'h',
+			minutes: 'min',
+			reason: 'Reason'
 		},
+		needReason: 'Must specify reason',
 
 		// Correspond to websocket calls in common/index.js
-		7: 'Image spoilered',
-		8: 'Image deleted',
-		9: 'Post deleted',
-		10: 'Thread locked',
-		11: 'Thread unlocked',
+		7: 'Spoiler adicionado à imagem',
+		8: 'Imagem deletada',
+		9: 'Postagem deletada',
+		10: 'Tópico trancado',
+		11: 'Tópico destrancado',
+		12: 'User banned',
+		53: 'User unbanned',
 
 		// Formatting function for moderation messages
 		formatLog: function (act) {
-			return lang.mod[act.kind] + ' by ' + act.ident;
+			var msg = lang.mod[act.kind] + ' por ' + act.ident;
+			if (act.reason)
+				msg += ' for ' + act.reason;
+			return msg;
 		}
 	},
 

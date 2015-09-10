@@ -21,17 +21,13 @@ master branch in production. For more stable revisions, please [download the
   webserver, you still need to set `MEDIA_URL` in `config/imager` for image
   search links to work.
 * Run `npm start` to start the server
-* You can update `config/hot.js` on-the-fly with `node server/kill.js`
-* To remove compiled server dependancies run `make clean`
-* Similarly `make client_clean` removes compiled client files
+* You can update `config/hot.js` on-the-fly with `node server/kill.js`3z
 * All errors are logged to `./error.log`
 
 ##Updating
-* To recompile client JS & CSS run `make client`. The new files can be loaded
- into a running server with `node server/kill.js`
-* After upgrading an io.js version or a meguca release run `make upgrade` to 
-recompile all dependancies
-* See `docs/` for upgrading between major semver releases
+* To recompile the project rerun `npm install`
+* After upgrading an io.js version also run `npm rebuild`
+* See `docs/` for upgrading between semver major releases
 
 ##Dependencies
 * [node-gyp dependancies](https://github.com/TooTallNate/node-gyp/#installation)
@@ -46,7 +42,8 @@ recompile all dependancies
 * pngquant  2.3.0+ for PNG thumbnails
 
 ## Documentation
-* docs/api.md - JSON API
+* docs/api.md - JSON API spec
+* docs/dev_guide.md - Brief description on project operation for developers
 * docs/migration_*.js - Major semvser migration instructions
 * docs/doushio.initscript.example - Init script example
 * docs/nginx.config.example - ngingx configuration example
