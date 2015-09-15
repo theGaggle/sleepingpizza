@@ -65,6 +65,15 @@ app.post('/login', persona.login)
 	.post('/upload/', imager.new_upload)
 	.use(admin)
 	.use('/api/', api);
-if (config.SERVE_STATIC_FILES)
-	app.use(express.static('www'));
+if (config.SERVE_STATIC_FILES) {
+	const opts = {};
+	if (!config.DEBUG) {
+		opts.etag = false;
+		opts.maxAge = '350 days';
+	}
+	else
+		opts.setHeaders = res => res.set(util.noCacheHeaders);
+	app.use(express.static('www', opts));
+}
+
 app.use(html);

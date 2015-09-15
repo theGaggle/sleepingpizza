@@ -24,6 +24,27 @@ var lang = {
 	you: '(You)',
 	done: 'Done',
 	send: 'Send',
+	locked: 'locked',
+	thread_locked: 'This thread is locked.',
+	langApplied: 'Language settings applied. The page will now reload.',
+	googleSong: 'Click to google song',
+	quoted: 'You have been quoted',
+	syncwatchStarting: 'Syncwatch starting in 10 seconds',
+	finished: 'Finished',
+	expander: ['Expand Images', 'Contract Images'],
+	uploading: 'Uploading...',
+	subject: 'Subject',
+	cancel: 'Cancel',
+	unknownUpload: 'Unknown upload error',
+	unknownResult: 'Unknown result',
+
+	reports: {
+		post: 'Reporting post',
+		reporting: 'Reporting...',
+		submitted: 'Report submitted!',
+		setup: 'Obtaining reCAPTCHA...',
+		loadError: 'Couldn\'t load reCATPCHA'
+	},
 
 	// Time-related
 	week: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
@@ -109,9 +130,14 @@ var lang = {
 	capitalize: function(word) {
 		return word[0].toUpperCase() + word.slice(1);
 	},
-	// 56 minutes ago
-	ago: function(time, unit) {
-		return lang.pluralize(time, unit) + ' ago';
+	// 56 minutes ago / in 56 minutes
+	ago: function(time, unit, isFuture) {
+		var res = lang.pluralize(time, unit);
+		if (isFuture)
+			res = 'in ' + res;
+		else
+			res += ' ago';
+		return res;
 	},
 	// 47 replies and 21 images omitted
 	abbrev_msg:  function(omit, img_omit, url) {

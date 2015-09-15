@@ -44,7 +44,7 @@ module.exports = function(isMobile) {
 			// Exec is not used on the server
 			exec(type) {
 				Cookie.set('lang', type);
-				alert('Language settings applied. The page will now reload.');
+				alert(main.lang.langApplied);
 				location.reload();
 			}
 		},
@@ -229,7 +229,7 @@ module.exports = function(isMobile) {
 			tab: 0,
 			validation: util.reasonable_last_n,
 			default: hotConfig.THREAD_LAST_N,
-			exec: function(n) {
+			exec(n) {
 				oneeSama.lastN = n;
 				Cookie.set('lastn', n);
 			}
@@ -268,11 +268,11 @@ module.exports = function(isMobile) {
 function toggleHeadStyle(id, css) {
 	return function (toggle) {
 		if (!document.getElementById(id)) {
-			const el = etc.parseDOM(`<style id="${id}">${css}</style>"`)[0];
+			const el = etc.parseDOM(`<style id="${id}">${css}</style>`)[0];
 			document.head.appendChild(el);
 		}
 
-		// Th disabled propert only exists on elements in the DOM, so we do
+		// The disabled property only exists on elements in the DOM, so we do
 		// another query
 		document.getElementById(id).disabled = !toggle;
 	}

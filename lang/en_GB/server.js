@@ -4,6 +4,7 @@
 var lang = {
 	catalog_omit: 'Replies/Images',
 	show_seconds: 'Click to show seconds',
+	worksBestWith: 'works best with',
 
 	// Imager responses
 	im : {
@@ -133,7 +134,7 @@ var lang = {
 		],
 		relativeTime: [
 			'Relative Timestamps',
-			'Relative post timestamps. Ex.: "1 hour ago." Requires page refresh'
+			'Relative post timestamps. Ex.: \'1 hour ago\''
 		],
 		nowPlaying: [
 			'Now Playing Banner',

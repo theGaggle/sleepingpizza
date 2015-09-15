@@ -4,6 +4,7 @@
 var lang = {
 	catalog_omit: 'Replies/Images',
 	show_seconds: 'Click to show seconds',
+	worksBestWith: 'works best with',
 
 	// Respuestas de imager
 	im : {
@@ -133,7 +134,7 @@ var lang = {
 		],
 		relativeTime: [
 			'Estampas de tiempo relativas',
-			'Estampas de tempo relativas. Ex.: "1 hora atrás." Requiere recarga de pagina'
+			'Estampas de tempo relativas. Ex.: \'1 hora atrás\''
 		],
 		nowPlaying: [
 			'Reproducción actual Banner',
