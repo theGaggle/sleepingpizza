@@ -40,31 +40,23 @@ OK.send = function (msg) {
 
 OK.on_update = function (op, kind, msg) {
 	// Special cases for operations that overwrite a client's state
-	if (this.post && kind == common.DELETE_POSTS) {
-		var nums = JSON.parse(msg)[0].slice(2);
-		if (nums.indexOf(this.post.num) >= 0)
+	const {post} = this;
+	if (post && kind == common.DELETE_POSTS) {
+		const num = JSON.parse(msg)[0].slice(2)[0];
+		if (num === post.num || num === post.op)
 			this.post = null;
 	}
-	else if (this.post && kind == common.DELETE_THREAD) {
-		if (this.post.num == op || this.post.op == op)
-			this.post = null;
-	}
-
-	if (this.blackhole && HOLED_UPDATES.indexOf(kind) >= 0)
-		return;
 	this.socket.write(msg);
 };
-
-const HOLED_UPDATES = [common.DELETE_POSTS, common.DELETE_THREAD];
 
 OK.on_thread_sink = function (thread, err) {
 	/* TODO */
 	winston.error(thread + ' sank: ' + err);
 };
 
-const WORMHOLES = [common.SYNCHRONIZE, common.FINISH_POST];
-
 OK.on_message = function (data) {
+	if (this.ident.ban)
+		return;
 	var msg;
 	try { msg = JSON.parse(data); }
 	catch (e) {}
@@ -77,13 +69,10 @@ OK.on_message = function (data) {
 	}
 	if (!this.synced && type != common.SYNCHRONIZE)
 		type = common.INVALID;
-	if (this.blackhole && WORMHOLES.indexOf(type) < 0)
-		return;
 	var func = dispatcher[type];
 	if (!func || !func(msg, this)) {
 		this.kotowaru(Muggle("Bad protocol",
-			new Error("Invalid message: " + JSON.stringify(data)))
-		);
+			new Error("Invalid message: " + JSON.stringify(data))));
 	}
 };
 
@@ -159,24 +148,21 @@ OK.finish_post = function (callback) {
 	});
 };
 
-function scan_client_caps () {
-	let clients = STATE.clientsByIP;
-	for (let i = 0, l = clients.length; i < l; i++) {
-		let ip = clients[i],
-			ident = caps.lookup_ident(ip);
-		for (let o = 0, l = clients[ip].length; o < l; o++) {
-			let okyaku = clients[ip][i];
-			if (!okyaku.id || !okyaku.board)
-				return;
-			if (ident.timeout) {
-				okyaku.blackhole = true;
-				return;
+function scan_client_caps() {
+	const clients = STATE.clientsByIP;
+	for (let ip in clients) {
+		const ident = caps.lookup_ident(ip);
+		if (!ident.ban)
+			continue;
+
+		// The length of the array changes, so make a shallow copy
+		for (let okyaku of clients[ip].slice()) {
+			okyaku.ident.ban = true;
+			try {
+				okyaku.socket.close();
 			}
-			if (!caps.can_access_board(ident, okyaku.board)) {
-				try {
-					okyaku.socket.close();
-				}
-				catch (e) { /* bleh */ }
+			catch (e) {
+				// Already closed. Whatever.
 			}
 		}
 	}
@@ -189,7 +175,9 @@ function push(msg){
 		try {
 			client.send(msg);
 		}
-		catch(e){/* Client died, but we don't care */}
+		catch(e){
+			// Client died, but we don't care
+		}
 	}
 }
 exports.push = push;

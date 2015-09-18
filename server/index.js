@@ -16,6 +16,20 @@ const config = require('../config'),
 // Read command line arguments. Modifies ../config, so loaded right after it.
 opts.parse_args();
 
+// Some config defaults for backwards compatibility.
+// TODO: Centralised config defaulting in a later version
+if (!config.link_boards)
+	config.link_boards = [];
+
+// Build an object of all possible board-like link targets
+const targets = config.link_targets = {};
+for (let board of config.BOARDS) {
+	targets[board] = `../${board}/`;
+}
+for (let board of config.PSUEDO_BOARDS.concat(config.link_boards)) {
+	targets[board[0]] = board[1];
+}
+
 // More verbose logging
 if (config.DEBUG) {
 	winston.remove(winston.transports.Console);
@@ -33,6 +47,17 @@ else {
 	});
 }
 
+
+// Detect major version and add extra transformers as needed
+const tranformers = ['es6.destructuring', 'es6.parameters', 'es6.spread',
+	'strict'];
+const version = process.version[1];
+if (version < 4) {
+	tranformers.push('es6.arrowFunctions');
+	if (version < 3)
+		tranformers.push('es6.properties.computed');
+}
+
 // ES6 transpiler require hook. We only enable some not yet implemented
 // feature transformers and rely on natives for others.
 require('babel/register')({
@@ -43,14 +68,7 @@ require('babel/register')({
 	// Stack traces should at least have the exact line numbers displayed
 	// correctly
 	retainLines: true,
-	whitelist: [
-		'es6.arrowFunctions',
-		'es6.destructuring',
-		'es6.parameters',
-		'es6.properties.computed',
-		'es6.spread',
-		'strict'
-	]
+	whitelist: tranformers
 });
 
 // Require the actual server

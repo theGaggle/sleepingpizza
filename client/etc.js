@@ -10,7 +10,6 @@ function touchable_spoiler_tag(del) {
 	del.html = '<del onclick="void(0)">';
 }
 exports.touchable_spoiler_tag = touchable_spoiler_tag;
-main.oneeSama.hook('spoilerTag', touchable_spoiler_tag);
 
 function imageUploadURL() {
 	return (main.config.UPLOAD_URL || '../upload/') + '?id='
@@ -30,3 +29,11 @@ function getModel(el) {
 	return state.posts.get(id);
 }
 exports.getModel = getModel;
+
+// Parse HTML string to node collection
+function parseDOM(string) {
+	const el = document.createElement('div');
+	el.innerHTML = string;
+	return el.childNodes;
+}
+exports.parseDOM = parseDOM;

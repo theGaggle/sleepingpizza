@@ -35,9 +35,14 @@ module.exports = {
 
 	BOARDS: ['moe', 'gar', 'meta', 'staff'],
 	DEFAULT_BOARD: 'moe',
-// Add links to the navigator menu to custom URLs
+// Add links to the navigator menu to custom URLs. Also enables linking
+// these in posts with `>>>/${board}/`.
 	PSUEDO_BOARDS: [
 		['g', 'https://google.com']
+	],
+// Only enable in-post links, without adding to the board navigation bar
+	link_boards: [
+		['4chan', 'http://www.4chan.org/']
 	],
 	STAFF_BOARD: 'staff',
 // Boards with disabled moderation
@@ -87,8 +92,6 @@ module.exports = {
 // URL and domain of the website
 	PERSONA_AUDIENCE: 'http://localhost:8000',
 	LOGIN_SESSION_TIME: 60*60*24*14,
-// Enable staff to assign custom tags to poster IPs
-	IP_TAGGING: true,
 
 // r/a/dio integration (https://r-a-d.io)
 	RADIO: false,

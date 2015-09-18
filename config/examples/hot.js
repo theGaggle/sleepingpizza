@@ -30,6 +30,8 @@ this.hot = {
 	SUBJECT_MAX_LENGTH: 50,
 	EXCLUDE_REGEXP: /[\u2000-\u200f\u202a-\u202f\u205f-\u206f]+/g,
 	SAGE_ENABLED: true,
+// Disable names and  for new posts
+	forced_anon: false,
 // Titles for staff that will be displayed in their posts' headers
 	staff_aliases: {
 		admin: 'Admin',
@@ -76,6 +78,8 @@ this.hot = {
 		'Source code repository: <a href="https://github.com/bakape/doushio"'
 			+ ' target="_blank">github.com/bakape/meguca</a>'
 	],
+// Extra JS script to load on all clients. Set to a file path or null.
+	inject_js: null,
 /*
  Word replacament filter. {p: /foo/, r: 'bar'} Pattern must not contain spaces
  or newlines

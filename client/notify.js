@@ -103,7 +103,7 @@ main.reply('repliedToMe', function (num) {
 	if (num in replies.readAll())
 		return;
 	if (options.get('notification') && document.hidden && !main.isMobile) {
-		let n = new Notification('You have been quoted', {
+		let n = new Notification(main.lang.quoted, {
 			// if the post doesn't have a image we use a bigger favicon
 			icon: post.image ? main.oneeSama.thumbPath(post.image)
 				: mediaURL + 'css/ui/favbig.png',
@@ -120,11 +120,9 @@ main.reply('repliedToMe', function (num) {
 	replies.write(num);
 });
 
-main.reply('time:syncwatch', function(time){
+main.reply('time:syncwatch', function () {
 	if (!options.get('notification') || !document.hidden)
 		return;
-	new Notification('Syncwatch Starting', {
-		body: 'syncwatch starting in : ' + time + ' seconds'
-	})
+	new Notification(main.lang.syncwatchStarting)
 		.onclick = () => window.focus();
 });

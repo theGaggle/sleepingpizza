@@ -4,10 +4,10 @@ Core server module and application entry point
 
 // Several modules depend on the state module and a redis connection. Load
 // those first.
-let STATE = require('./state'),
+const STATE = require('./state'),
 	db = require('../db');
 
-let _ = require('underscore'),
+const _ = require('underscore'),
     amusement = require('./amusement'),
     async = require('async'),
     caps = require('./caps'),
@@ -24,11 +24,10 @@ let _ = require('underscore'),
 	path = require('path'),
     persona = require('./persona'),
     Render = require('./render'),
-    tripcode = require('./tripcode/tripcode'),
+    tripcode = require('bindings')('tripcode'),
     urlParse = require('url').parse,
     winston = require('winston');
 
-require('../admin');
 require('../imager/daemon'); // preload and confirm it works
 var radio;
 if (config.RADIO)
@@ -238,10 +237,8 @@ dispatcher[common.INSERT_POST] = function (msg, client) {
 	if (config.DEBUG)
 		debug_command(client, frag);
 
-	allocate_post(msg, client, function (err) {
-		if (err)
-			client.kotowaru(Muggle("Allocation failure.", err));
-	});
+	allocate_post(msg, client, err =>
+		err && client.kotowaru(Muggle("Allocation failure.", err)));
 	return true;
 };
 
@@ -284,25 +281,28 @@ function allocate_post(msg, client, callback) {
 			post.subject = subject;
 	}
 
-	// Replace names, when a song plays on r/a/dio
-	if (radio && radio.name)
-		post.name = radio.name;
-	/* TODO: Check against client.watching? */
-	else if (msg.name) {
-		var parsed = common.parse_name(msg.name);
-		post.name = parsed[0];
-		var spec = STATE.hot.SPECIAL_TRIPCODES;
-		if (spec && parsed[1] && parsed[1] in spec) {
-			post.trip = spec[parsed[1]];
+	if (!STATE.hot.forced_anon) {
+		// Replace names, when a song plays on r/a/dio
+		if (radio && radio.name)
+			post.name = radio.name;
+		/* TODO: Check against client.watching? */
+		else if (msg.name) {
+			const parsed = common.parse_name(msg.name);
+			post.name = parsed[0];
+			const spec = STATE.hot.SPECIAL_TRIPCODES;
+			if (spec && parsed[1] && parsed[1] in spec) {
+				post.trip = spec[parsed[1]];
+			}
+			else if (parsed[1] || parsed[2]) {
+				const trip = tripcode.hash(parsed[1], parsed[2]);
+				if (trip)
+					post.trip = trip;
+			}
 		}
-		else if (parsed[1] || parsed[2]) {
-			var trip = tripcode.hash(parsed[1], parsed[2]);
-			if (trip)
-				post.trip = trip;
-		}
+		if (msg.email)
+			post.email = msg.email.trim().substr(0, 320);
 	}
-	if (msg.email)
-		post.email = msg.email.trim().substr(0, 320);
+
 	post.state = [common.S_BOL, 0];
 
 	if ('auth' in msg) {
@@ -552,12 +552,10 @@ function start_server() {
 
 function hot_reloader() {
 	STATE.reload_hot_resources(function (err) {
-		if (err) {
-			winston.error("Error trying to reload:");
-			winston.error(err);
-			return;
-		}
+		if (err)
+			return winston.error('Error trying to reload:', err);
 		okyaku.scan_client_caps();
+		amusement.pushJS();
 		// Push new hot variable hash to all clients
 		okyaku.push([0, common.HOT_INJECTION, false, STATE.clientConfigHash]);
 		winston.info('Reloaded initial state.');

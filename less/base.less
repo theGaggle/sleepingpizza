@@ -108,6 +108,7 @@ figcaption {
 }
 .imageSearch {
 	font-weight: bold;
+	display: none;
 	&:before {
 		content: " ";
 	}
@@ -150,6 +151,16 @@ h1, h2 {
 h3 {
 	display: inline;
 	font-size: inherit;
+}
+.retardedBrowser {
+	font-size: 18px;
+	text-align: right;
+	img {
+		height: 18px;
+		width: 18px;
+		position: relative;
+		top: 2px;
+	}
 }
 #hover_overlay {
 	width: 100%;
@@ -332,9 +343,12 @@ span.control .popup-menu {
 		vertical-align: top;
 		padding: 0.6em;
 		margin: 0.15em;
-		small {
-			clear: none;
-			display: inline-block;
+	}
+	small {
+		clear: none;
+		display: inline-block;
+		& span:first-child {
+			margin-right: 0.2em;
 		}
 	}
 }
@@ -371,6 +385,9 @@ span.control .popup-menu {
 }
 #hidden {
 	float: right;
+}
+input[type=number] {
+	width: 3em;
 }
 // Proper fixed element rendering with dynamic animated backgrounds
 #banner, .bmodal, .modal {
@@ -444,12 +461,6 @@ figure {
 	float: right;
 	padding-left: 15px;
 }
-.locked:after {
-	content: "This thread is locked.";
-}
-.locked > header nav:after {
-	content: " (locked)";
-}
 .locked aside {
 	display: none !important;
 }
@@ -485,28 +496,6 @@ figure {
 	background-image: url('ui/lock.svg');
 	background-size: 1em 1em;
 	background-position: 0 0;
-}
-.multi-select {
-	article {
-		margin-left: 50px;
-	}
-	section > header {
-		clear: both;
-		margin-left: 55px;
-		.select-handle {
-			margin-left: -65px;
-		}
-	}
-}
-.select-handle {
-	width: 35px;
-	height: 35px;
-	margin-left: -55px;
-	float: left;
-	border: solid 1px gray;
-	border-radius: 4px;
-	-moz-border-radius: 4px;
-	-webkit-border-radius: 4px;
 }
 .themed {
 	background-color: transparent;
@@ -567,7 +556,10 @@ pre, .themed {
 	text-wrap: none;
 	vertical-align: baseline;
 }
-
+#noscriptHeader {
+	color: #b5bd68;
+	margin-top: 1em;
+}
 @media screen and (max-device-width: 700px) {
 	article {
 		clear: both;

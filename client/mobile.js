@@ -5,6 +5,9 @@
 let main = require('./main'),
 	{$} = main;
 
+// TODO: Remove this module and related server-side logic/assets, once we
+// build a separate mobile bundle
+
 main.defer(function() {
 	// User refused the first time
 	if (!main.isMobile || localStorage.homescreenRefused)
@@ -32,3 +35,5 @@ main.defer(function() {
 		})
 		.appendTo('#banner_center');
 });
+
+main.oneeSama.hook('spoilerTag', main.etc.touchable_spoiler_tag);

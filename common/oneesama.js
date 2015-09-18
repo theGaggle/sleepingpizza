@@ -2,31 +2,24 @@
  Rendering singleton both server and client-side
  */
 
-let _ = require('underscore'),
+const _ = require('underscore'),
 	imports = require('./imports'),
 	index = require('./index'),
-	util = require('./util');
-
-const config = imports.config,
-	escape = util.escape_html,
-	flatten = util.flatten,
-	join = util.join,
-	pad = util.pad,
-	parseHTML = util.parseHTML,
-	safe = util.safe;
+	util = require('./util'),
+	{config} = imports,
+	{flatten, join, pad, parseHTML, safe} = util,
+	escape = util.escape_html;
 
 const break_re = new RegExp("(\\S{" + index.WORD_LENGTH_LIMIT + "})");
 
-// Internal referal links and embeds
-const ref_re = (function() {
-	let ref_re = '>>(\\d+'
-		+ '|>\\/watch\\?v=[\\w-]{11}(?:#t=[\\dhms]{1,9})?'
-		+ '|>\\/soundcloud\\/[\\w-]{1,40}\\/[\\w-]{1,80}'
-		+ '|>\\/pastebin\\/\\w+';
+// `>>>/${link}/` referal links and embeds
+const ref_re = (function () {
+	let ref_re = String.raw`>>(\d+|>\/watch\?v=[\w-]{11}(?:#t=[\dhms]{1,9})?
+		|>\/soundcloud\/[\w-]{1,40}\/[\w-]{1,80}|>\/pastebin\/\w+`
+			.replace(/[\n\t]+/gm, '');
 
-	const boards = config.BOARDS;
-	for (let i = 0; i < boards.length; i++) {
-		ref_re += `|>\\/${boards[i]}\\/(?:\\d+)?`;
+	for (let board in config.link_targets) {
+		ref_re += String.raw`|>\/${board}\/(?:\w+\/?)?`;
 	}
 
 	ref_re += ')';
@@ -148,6 +141,8 @@ class OneeSama {
 		];
 		if (data.mod)
 			tale.body.unshift(safe(this.modInfo(data.mod)));
+		if (data.banned)
+			tale.body.push(safe(this.banned()));
 		const {image} = data;
 		if (image) {
 			// Larger thumbnails for thread images
@@ -189,7 +184,7 @@ class OneeSama {
 			html += '</a>';
 		html += '</b>';
 		if (data.mnemonic)
-			html += ` <a class="mod addr">${data.mnemonic}</a>`;
+			html += ' ' + this.mnemonic(data.mnemonic);
 		return html;
 	}
 	resolveName(data) {
@@ -243,19 +238,31 @@ class OneeSama {
 	}
 	// Readable elapsed time since post
 	relativeTime(then, now) {
-		let time = Math.floor((now - then) / 60000);
-		if (time < 1)
-			return this.lang.just_now;
+		let time = Math.floor((now - then) / 60000),
+			isFuture;
+		if (time < 1) {
+			// Assume to be client clock imprecission
+			if (time > -1)
+				return this.lang.just_now;
+			else {
+				isFuture = true;
+				time = -time;
+			}
+		}
 
 		const divide = [60, 24, 30, 12],
 			unit = ['minute', 'hour', 'day', 'month'];
-		for (let i = 0, len = divide.length; i < len; i++) {
+		for (let i = 0; i < divide.length; i++) {
 			if (time < divide[i])
-				return this.lang.ago(time, this.lang['unit_' + unit[i]]);
+				return this.lang.ago(time, this.lang['unit_' + unit[i]],
+					isFuture);
 			time = Math.floor(time / divide[i]);
 		}
 
-		return this.lang.ago(time, this.lang.unit_year);
+		return this.lang.ago(time, this.lang.unit_year, isFuture);
+	}
+	mnemonic(mnem) {
+		return `<b class="mod addr">${mnem}</b>`;
 	}
 	postNavigation(post) {
 		const num = post.num,
@@ -294,6 +301,9 @@ class OneeSama {
 		}
 		html += '</b>';
 		return html;
+	}
+	banned() {
+		return `<b class="admin banMessage">${this.lang.mod.banMessage}</b>`;
 	}
 	// Render full blockqoute contents
 	body(body) {
@@ -404,30 +414,30 @@ class OneeSama {
 			linkClass = 'embed pastebin';
 		}
 
-		// Linkify >>>/board/ URLs
-		const boards = config.BOARDS;
-		for (let i = 0, len = boards.length; i < len; i++) {
-			let board = boards[i];
-			if (!new RegExp('^>\\/' + board + '\\/').test(ref))
+		// Linkify other `>>>/${link}/` URLs
+		for (let link in config.link_targets) {
+			const m = ref.match(new RegExp(String.raw`^>\/(${link})\/(\w+\/?)?`));
+			if (!m)
 				continue;
-			dest = '../' + board;
-			linkClass = 'history';
+			dest = config.link_targets[link];
+			if (m[2])
+				dest += m[2];
 			break;
 		}
 
-		if (!dest) {
-			this.tamashii(parseInt(ref, 10));
-			return;
-		}
+		if (!dest)
+			return this.tamashii(parseInt(ref, 10));
+
+		const attrs = {
+			href: encodeURI(dest),
+			target: '_blank',
+			rel: 'nofollow',
+			class: linkClass
+		};
 		this.callback(safe(parseHTML
-			`<a href="${encodeURI(dest)}"
-				target="_blank"
-				rel="nofollow"
-				class="${linkClass}"
-			>
+			`<a ${attrs}>
 				>>${escape(ref)}
-			</a>`
-		));
+			</a>`));
 	}
 	// Render hash commands
 	parseHashes(text) {

@@ -2,10 +2,10 @@
  * Thumbnail and image renderring
  */
 
-let main = require('../main'),
+const main = require('../main'),
 	{$, $threads, _, Backbone, common, etc, oneeSama, options, state} = main;
 
-let Hidamari = exports.Hidamari = {
+const Hidamari = exports.Hidamari = {
 	/*
 	 Render entire <figure>. Rerenderring completely each time is considerable
 	 overhed, but the alternative is very convoluted logic. I don't really want
@@ -47,8 +47,9 @@ let Hidamari = exports.Hidamari = {
 			// Don't auto expand webm/PDF/MP3
 			|| ['.webm', '.pdf', '.mp3'].includes(img.ext)
 		)
-			return;
+			return this;
 		this.toggleImageExpansion(true, img);
+		return this;
 	},
 	toggleImageExpansion(expand, img, manual) {
 		const fit = options.get('inlinefit');
@@ -163,10 +164,10 @@ let Hidamari = exports.Hidamari = {
 };
 
 // Expand all images
-let ExpanderModel = Backbone.Model.extend({
+const ExpanderModel = Backbone.Model.extend({
 	id: 'massExpander',
 	initialize() {
-		$threads.on('click', '#expandImages', (e) => {
+		$threads.on('click', '#expandImages', e => {
 			e.preventDefault();
 			this.toggle();
 		});
@@ -176,7 +177,7 @@ let ExpanderModel = Backbone.Model.extend({
 		this.set('expand', expand).massToggle(expand);
 		$threads
 			.find('#expandImages')
-			.text(`${expand ? 'Contract' : 'Expand'} Images`);
+			.text(main.lang.expander[+expand]);
 	},
 	// More efficent than individual listeners
 	massToggle(expand) {
@@ -197,7 +198,7 @@ let ExpanderModel = Backbone.Model.extend({
 	}
 });
 
-let massExpander = exports.massExpander = new ExpanderModel();
+const massExpander = exports.massExpander = new ExpanderModel();
 main.reply('massExpander:unset', () => massExpander.unset());
 
 // Proxy image clicks to views. More performant than dedicated listeners for

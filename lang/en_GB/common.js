@@ -24,6 +24,27 @@ var lang = {
 	you: '(You)',
 	done: 'Done',
 	send: 'Send',
+	locked: 'locked',
+	thread_locked: 'This thread is locked.',
+	langApplied: 'Language settings applied. The page will now reload.',
+	googleSong: 'Click to google song',
+	quoted: 'You have been quoted',
+	syncwatchStarting: 'Syncwatch starting in 10 seconds',
+	finished: 'Finished',
+	expander: ['Expand Images', 'Contract Images'],
+	uploading: 'Uploading...',
+	subject: 'Subject',
+	cancel: 'Cancel',
+	unknownUpload: 'Unknown upload error',
+	unknownResult: 'Unknown result',
+
+	reports: {
+		post: 'Reporting post',
+		reporting: 'Reporting...',
+		submitted: 'Report submitted!',
+		setup: 'Obtaining reCAPTCHA...',
+		loadError: 'Couldn\'t load reCATPCHA'
+	},
 
 	// Time-related
 	week: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
@@ -35,6 +56,16 @@ var lang = {
 	unit_day: 'day',
 	unit_month: 'month',
 	unit_year: 'year',
+
+	// Websocket syncronisation status
+	sync: {
+		notSynced: 'Not synched',
+		connecting: 'Connecting',
+		syncing: 'Syncing',
+		synced: 'Synced',
+		dropped: 'Dropped',
+		reconnecting: 'Reconnecting'
+	},
 
 	// Moderation language map
 	mod: {
@@ -49,11 +80,23 @@ var lang = {
 			'Notification',
 			'Send notifaction message to all clients'
 		],
+		ban: ['Ban', 'Ban poster(s) for the selected post(s)'],
 		renderPanel: ['Panel', 'Toggle administrator panel display'],
 		modLog: ['Log', 'Show moderation log'],
+		displayBan: [
+			'Display', 
+			'Append a public \'USER WAS BANNED FOR THIS POST\' message'
+		],
+		unban: 'Unban',
+		banMessage: 'USER WAS BANNED FOR THIS POST',
 		placeholders: {
-			msg: 'Message'
+			msg: 'Message',
+			days: 'd',
+			hours: 'h',
+			minutes: 'min',
+			reason: 'Reason'
 		},
+		needReason: 'Must specify reason',
 
 		// Correspond to websocket calls in common/index.js
 		7: 'Image spoilered',
@@ -61,10 +104,15 @@ var lang = {
 		9: 'Post deleted',
 		10: 'Thread locked',
 		11: 'Thread unlocked',
+		12: 'User banned',
+		53: 'User unbanned',
 
 		// Formatting function for moderation messages
 		formatLog: function (act) {
-			return lang.mod[act.kind] + ' by ' + act.ident;
+			var msg = lang.mod[act.kind] + ' by ' + act.ident;
+			if (act.reason)
+				msg += ' for ' + act.reason;
+			return msg;
 		}
 	},
 
@@ -82,9 +130,14 @@ var lang = {
 	capitalize: function(word) {
 		return word[0].toUpperCase() + word.slice(1);
 	},
-	// 56 minutes ago
-	ago: function(time, unit) {
-		return lang.pluralize(time, unit) + ' ago';
+	// 56 minutes ago / in 56 minutes
+	ago: function(time, unit, isFuture) {
+		var res = lang.pluralize(time, unit);
+		if (isFuture)
+			res = 'in ' + res;
+		else
+			res += ' ago';
+		return res;
 	},
 	// 47 replies and 21 images omitted
 	abbrev_msg:  function(omit, img_omit, url) {
