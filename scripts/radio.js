@@ -11,7 +11,7 @@ var _ = require('underscore'),
 
 var RADIO_IDENT = {auth: 'Radio', ip: '127.0.0.1'};
 var RADIO_MOUNT = '/SleepyRadio';
-var ICECAST_POLL_URL = 'http://localhost:8000/poll.xsl';
+var ICECAST_POLL_URL = 'http://localhost:5555/poll.xsl';
 var M3U_URL = 'http://sleeping.pizza/SleepyRadio.m3u';
 var SHORT_INTERVAL = 3 * 1000;
 var LONG_INTERVAL = 30 * 1000;
