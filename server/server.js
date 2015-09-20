@@ -85,7 +85,7 @@ function linkToDatabase(board, syncs, live, client) {
 	let dead_threads = [], count = 0, op;
 	for (let k in syncs) {
 		k = parseInt(k, 10);
-		if (db.OPs[k] != k || !db.boardHasOP(board, k)) {
+		if (!db.validateOP(k, board)) {
 			delete syncs[k];
 			dead_threads.push(k);
 		}
@@ -167,6 +167,13 @@ dispatcher[common.RESYNC] = function(msg, client) {
 	if (!check(['string', 'id=>nat', 'boolean'], msg))
 		return false;
 	return linkToDatabase(msg[0], msg[1], msg[2], client);
+};
+
+// Stop listening on redis channels in preparation for RESYNC
+dispatcher[common.DESYNC] = function (msg, client) {
+	if (client.db)
+		client.db.kikanai().disconnect();
+	return true;
 };
 
 function setup_imager_relay(cb) {
@@ -264,9 +271,7 @@ function allocate_post(msg, client, callback) {
 	}
 
 	if (msg.op) {
-		if (db.OPs[msg.op] != msg.op)
-			return callback(Muggle('Thread does not exist.'));
-		if (!db.boardHasOP(extra.board, msg.op))
+		if (!db.validateOP(msg.op, extra.board))
 			return callback(Muggle('Thread does not exist.'));
 		post.op = msg.op;
 	}
@@ -281,18 +286,17 @@ function allocate_post(msg, client, callback) {
 			post.subject = subject;
 	}
 
-	if (!STATE.hot.forced_anon) {
-		// Replace names, when a song plays on r/a/dio
-		if (radio && radio.name)
-			post.name = radio.name;
+	// Replace names, when a song plays on r/a/dio
+	if (radio && radio.name)
+		post.name = radio.name;
+	else if (!STATE.hot.forced_anon) {
 		/* TODO: Check against client.watching? */
-		else if (msg.name) {
+		if (msg.name) {
 			const parsed = common.parse_name(msg.name);
 			post.name = parsed[0];
 			const spec = STATE.hot.SPECIAL_TRIPCODES;
-			if (spec && parsed[1] && parsed[1] in spec) {
+			if (spec && parsed[1] && parsed[1] in spec)
 				post.trip = spec[parsed[1]];
-			}
 			else if (parsed[1] || parsed[2]) {
 				const trip = tripcode.hash(parsed[1], parsed[2]);
 				if (trip)

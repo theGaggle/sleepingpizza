@@ -93,10 +93,13 @@ class RenderBase {
 	}
 	templateTop() {
 		// Templates are generated two per language and cached
-		const {isMobile, isRetarded} = this.req,
-			tmpl = this.tmpl
-				= RES[`${isMobile ? 'mobile' : 'index'}Tmpl-${this.lang}`];
-		let html = tmpl[0];
+		const {isMobile, isRetarded} = this.req;
+		this.tmpl = RES[`${isMobile ? 'mobile' : 'index'}Tmpl-${this.lang}`];
+		this.tempalateIndex = 0;
+
+		// Store time of render to prevent loading old sessions on browser
+		// resume.
+		let html = this.templatePart() + Date.now() + this.templatePart();
 
 		// Notify the user, he/she/it should consider a brain transplant
 		if (isRetarded) {
@@ -108,10 +111,13 @@ class RenderBase {
 			html += '</div>';
 		}
 
-		html += '<h1>';
 		if (!isMobile)
-			html += this.imageBanner();
-		return html + '</h1>' + tmpl[1];
+			html += this.imageBanner() + this.templatePart();
+		return html;
+	}
+	// Insert the next part of the template
+	templatePart() {
+		return this.tmpl[this.tempalateIndex++];
 	}
 	imageBanner() {
 		const banners = STATE.hot.BANNERS;
@@ -141,7 +147,7 @@ class RenderBase {
 	}
 	// <script> tags
 	pageEnd() {
-		let html = this.tmpl[2];
+		let html = this.templatePart();
 
 		// Make script loader load moderation bundle
 		const {ident} = this.req;
@@ -150,8 +156,7 @@ class RenderBase {
 			html += `var IDENT = ${keys};`;
 		}
 
-		html += this.tmpl[3];
-		return html;
+		return html + this.templatePart();
 	}
 }
 
@@ -164,11 +169,7 @@ class Catalog extends RenderBase {
 		// Cache so it can be resused at <threads> bottom
 		const pag = this.pag
 			= this.oneeSama.asideLink('return', '.', 'compact', 'history');
-		let html = this.boardTitle() + pag + '<hr>\n';
-		if (!config.READ_ONLY)
-			html += this.oneeSama.newThreadBox();
-		html += '<div id="catalog">';
-		return html;
+		return this.boardTitle() + pag + '<hr>\n<div id="catalog">';
 	}
 	onBottom() {
 		this.resp.write('</div><hr>\n' + this.pag + this.threadsBottom());
@@ -198,8 +199,7 @@ class Catalog extends RenderBase {
 					</span>
 					${oneeSama.expansionLinks(post.num)}
 				</small>
-				<br>`
-			)
+				<br>`)
 		);
 		if (post.subject)
 			html.push(safe('<h3>「'), post.subject, safe('」</h3>'));
