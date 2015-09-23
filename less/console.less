@@ -23,9 +23,6 @@ article {
 	&.highlight {
 		background-color: #222;
 	}
-	header {
-		padding-left: 0;
-	}
 }
 .editing {
 	background-color: #0000b2;
@@ -112,14 +109,8 @@ figcaption, figcaption a {
 		text-transform: lowercase;
 	}
 }
-.pagination input, .control {
-	display: none;
-}
 header {
 	color: gray;
-	background-image: none;
-	margin: 0;
-	padding: 0;
 }
 h1, h2 {
 	color: white;
@@ -165,7 +156,8 @@ small {
 	color: #2020ff;
 }
 .modal, .bmodal, .preview, .popup-menu {
-	background-color: #111;
+	border: @border;
+	background: black;
 }
 #feedback {
 	right: 0;
@@ -174,7 +166,7 @@ small {
 #trans {
 	margin-bottom: -4px;
 }
-#lock, .scroll-lock header {
+#lock {
 	background-image: none;
 }
 // Override default with a fully opaque banner
