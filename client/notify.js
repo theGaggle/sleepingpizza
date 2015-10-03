@@ -2,24 +2,21 @@
  Unread post etc. notifications
  */
 
-let main = require('./main'),
-	{$, Backbone, connSM, state, options} = main;
+const main = require('./main'),
+	{$, Backbone, config, connSM, state, options} = main;
 
-const mediaURL = main.config.MEDIA_URL;
+const mediaURL = config.MEDIA_URL;
 
 // Needs to be available with no connectivity, so we download and cache it
-let discoFavicon = '';
-{
-	// jQuery does not support XHR2 binary data type request
-	let xhr = new XMLHttpRequest();
-	xhr.open('GET', config.SECONDARY_MEDIA_URL + 'css/ui/disconnected.ico');
-	xhr.responseType = 'blob';
-	xhr.onload = function() {
-		if (this.status === 200)
-			discoFavicon = window.URL.createObjectURL(this.response);
-	};
-	xhr.send();
-}
+let discoFavicon = '',
+	xhr = new XMLHttpRequest();
+xhr.open('GET', config.SECONDARY_MEDIA_URL + 'css/ui/disconnected.ico');
+xhr.responseType = 'blob';
+xhr.onload = function() {
+	if (this.status === 200)
+		discoFavicon = window.URL.createObjectURL(this.response);
+};
+xhr.send();
 
 let NotifyModel = Backbone.Model.extend({
 	initialize() {
@@ -45,11 +42,6 @@ let NotifyModel = Backbone.Model.extend({
 				unreadCount: 0,
 				reply: !hidden
 			});
-			// Prevent scrolling with new posts, if page isn't visible
-			if (!options.get('alwaysLock')) {
-				main.request('scroll:focus',
-					hidden && main.$threads.find('article').last().attr('id'));
-			}
 		}, false);
 
 		let dropped = () => this.set('alert', true);

@@ -70,6 +70,7 @@ module.exports = function(isMobile) {
 		/* IMAGE HOVER EXPANSION */
 		{
 			id: 'imageHover',
+			default: true,
 			load: notMobile,
 			tab: 0
 		},
@@ -126,6 +127,7 @@ module.exports = function(isMobile) {
 		{
 			id: 'relativeTime',
 			tab: 0,
+			default: true,
 			exec(toggle) {
 				oneeSama.rTime = toggle;
 			}
@@ -203,7 +205,7 @@ module.exports = function(isMobile) {
 				if (!theme)
 					return;
 				document.getElementById('theme').setAttribute('href',
-					`${config.MEDIA_URL}css/${theme}.css?v=${cssHash}`);
+					`${config.MEDIA_URL}css/${theme}.css?v=${main.cssHash}`);
 			}
 		},
 		/* CUSTOM USER-SET BACKGROUND */
