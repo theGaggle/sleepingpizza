@@ -10,9 +10,9 @@ var _ = require('underscore'),
     winston = require('winston');
 
 var RADIO_IDENT = {auth: 'Radio', ip: '127.0.0.1'};
-var RADIO_MOUNT = '/radio';
+var RADIO_MOUNT = '/SleepyRadio';
 var ICECAST_POLL_URL = 'http://localhost:5555/poll.xsl';
-var M3U_URL = 'http://doushio.com/radio.m3u';
+var M3U_URL = 'http://sleeping.pizza/SleepyRadio.m3u';
 var SHORT_INTERVAL = 3 * 1000;
 var LONG_INTERVAL = 30 * 1000;
 
@@ -143,41 +143,41 @@ function parse_icecast(input, cb) {
 	parser.parse(input);
 }
 
-var R_A_D_IO_POLL_URL = 'http://r-a-d.io/api';
-
-function poll_r_a_d_io(cb) {
-	var opts = {
-		url: R_A_D_IO_POLL_URL,
-		json: true,
-	};
-	request.get(opts, function (err, resp, body) {
-		if (err)
-			return cb(err);
-		if (resp.statusCode != 200)
-			return cb("Got " + resp.statusCode);
-		cb(null, format_r_a_d_io(body));
-	});
-}
-
-function format_r_a_d_io(json) {
-	if (!json || !json.main)
-		return null;
-	var station = json.main;
-	var info = extract_thread(station.thread);
-	if (!info)
-		return null;
-	var count = station.listeners || '???';
-	count = count + ' listener' + (count == 1 ? '' : 's');
-	var msg = [{text: count, href: 'http://r-a-d.io/'}];
-
-	var np = station.np;
-	if (typeof np == 'string' && np) {
-		msg.push(': ' + np.slice(0, 100));
-	}
-	info.msg = msg;
-	return info;
-}
-
+/*var R_A_D_IO_POLL_URL = 'http://r-a-d.io/api';
+ *
+ *function poll_r_a_d_io(cb) {
+ *	var opts = {
+ *		url: R_A_D_IO_POLL_URL,
+ *		json: true,
+ *	};
+ *	request.get(opts, function (err, resp, body) {
+ *		if (err)
+ *			return cb(err);
+ *		if (resp.statusCode != 200)
+ *			return cb("Got " + resp.statusCode);
+ *		cb(null, format_r_a_d_io(body));
+ *	});
+ *}
+ *
+ *function format_r_a_d_io(json) {
+ *	if (!json || !json.main)
+ *		return null;
+ *	var station = json.main;
+ *	var info = extract_thread(station.thread);
+ *	if (!info)
+ *		return null;
+ *	var count = station.listeners || '???';
+ *	count = count + ' listener' + (count == 1 ? '' : 's');
+ *	var msg = [{text: count, href: 'http://r-a-d.io/'}];
+ *
+ *	var np = station.np;
+ *	if (typeof np == 'string' && np) {
+ *		msg.push(': ' + np.slice(0, 100));
+ *	}
+ *	info.msg = msg;
+ *	return info;
+ *}
+ */ 
 var reduce_regexp = /&(?:amp|lt|gt|quot);/g;
 var reductions = {'&amp;' : '&', '&lt;': '<', '&gt;': '>', '&quot;': '"'};
 function reduce_entities(html) {
@@ -201,8 +201,8 @@ if (require.main === module) {
 			process.exit(err ? 1 : 0);
 		});
 	}
-	else if (args[2] == '--r-a-d-io') {
+/*	else if (args[2] == '--r-a-d-io') {
 		winston.info('Polling ' + R_A_D_IO_POLL_URL + '.');
 		make_monitor(poll_r_a_d_io)();
-	}
+	} */
 }
