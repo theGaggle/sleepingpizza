@@ -2,6 +2,42 @@
 All notable changes to this project will be documented in this file.
 Project uses [Semantic Versioning](http://semver.org/)
 
+##1.5.1 - 2015-11-10
+##Fix
+- "hide" image thumbnail mode
+
+##1.5.0 - 2015-11-08
+###Add
+- Work mode aka Boss key
+
+##1.4.0 - 2015-11-08
+###Add
+- Optional site frontpage to serve on '/'
+
+###Changed
+- Upgrade breaking dependencies
+
+##1.3.3 - 2015-11-06
+###Fix
+- Writing of multiple dice in one fragment
+
+##1.3.2 - 2015-11-06
+###Fixed
+- Crash on failing to read moderation array
+
+##1.3.1 - 2015-10-31
+###Fixed
+- New post multiplication in Expand All image mode
+- Crashes related to database dice spec migration
+- Connection getting stuck on "Syncing"
+
+##Changed
+- Hide loading indicator on fetch failure
+
+##Added
+- Babel.js transformer check for node.js version >=5
+- Switch from archive.moe image search to desustorage.org
+
 ##1.3.0 - 2015-10-20
 ###Fixed
 - Crash on parsing dice server-side in some cases
