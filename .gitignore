@@ -4,6 +4,7 @@
 .lock*
 .DS_Store
 .project
+.vagrant
 config/*.js
 error.log
 node_modules/
@@ -24,4 +25,8 @@ www/thumb
 www/mid
 /nbproject/
 .netbeans.xml
+<<<<<<< HEAD
 www/spoil/Thumbs.db
+=======
+.tern-project
+>>>>>>> upstream/master
