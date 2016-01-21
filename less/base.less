@@ -63,6 +63,9 @@ small {
 		padding-bottom: 0.5em;
 	}
 }
+.close {
+	font-weight: bold;
+}
 .embed {
 	background-color: rgba(255, 255, 255, 0.5);
 	border-radius: 4px;
@@ -448,6 +451,7 @@ figure {
 	top: -75px;
 	width: 70px;
 	height: 141px;
+	z-index: 10;
 }
 #lock {
 	background: url('ui/lock.svg') no-repeat left;
@@ -468,7 +472,7 @@ figure {
 	white-space: nowrap;
 	z-index: 20;
 }
-.modal, .bmodal, .preview, .popup-menu, #hover_overlay > * , #banner {
+.modal, .bmodal, .preview, .popup-menu, #banner {
 	-webkit-box-shadow: 3px 3px 3px 0 rgba(0,0,0,0.5);
 	-moz-box-shadow: 3px 3px 3px 0 rgba(0,0,0,0.5);
 	box-shadow: 3px 3px 3px 0 rgba(0,0,0,0.5);
@@ -496,7 +500,7 @@ figure {
 	margin-bottom: 7px;
 	min-width: 100px;
 	&:focus {
-		outline: 0;	
+		outline: 0;
 	}
 }
 #report-panel {
