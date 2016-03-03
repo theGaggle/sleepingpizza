@@ -1,6 +1,7 @@
 /*
-Selects and loads the client files
- */
+ Selects and loads the client files
+ Use only pure ES5.
+*/
 
 (function () {
 	// Check for browser compatibility by trying to detect some ES6 features
@@ -36,42 +37,35 @@ Selects and loads the client files
 		'"use strict"; var passed = false;'
 			+ 'class B {constructor(a) {  passed = (a === "barbaz")}};'
 			+ 'class C extends B {constructor(a) {super("bar" + a)}};'
-			+ 'new C("baz"); return passed;'
+			+ 'new C("baz"); return passed;',
+		// Promises
+		'return typeof Promise === "function"',
+		// ServiceWorker
+		'return typeof navigator.serviceWorker === "object"',
+		// Default parameters
+		'return (function (a = 1, b = 2) { return a === 3 && b === 2; }(3));',
+		// Destructuring decliration
+		'var [a,,[b],c] = [5,null,[6]];return a===5 && b===6 && c===undefined',
+		// Parameter destructuring
+		'return function([a,,[b],c]){return a===5 && b===6 && c===undefined;}'
+			+ '([5,null,[6]])'
 	]
-	var legacy
+
 	for (var i = 0; i < tests.length; i++) {
 		if (!check(tests[i])) {
-			// Load client with full ES5 compliance
-			legacy = true
-			break
+			alert("Browser outdated. Install latest Chrome/Firefox/Opera")
+			return
 		}
 	}
 
-	// Load all client modules as precompiled System.register format modules
-	var meta = {}
-	meta['es5/*'] = meta['es6/*'] = {format: 'register'}
+	initModuleLoader()
 
-	System.config({
-		baseURL: '/ass/js',
-		defaultJSExtensions: true,
-		// Alias the appropriate language pack to "lang"
-		map: {
-			lang: 'lang/' + (localStorage.lang || config.lang.default),
-			underscore: 'vendor/underscore',
-			'js-cookie': 'vendor/js-cookie'
-		},
-		meta: meta
+	navigator.serviceWorker.register("/worker.js").then(function () {
+		return System.import("vendor/dom4")
+	}).then(function () {
+		// Wait until serviceWorker is ready
+		return navigator.serviceWorker.ready
+	}).then(function () {
+		return System.import('client/main')
 	})
-
-	// Load core-js polyfill, if above tests fail
-	if (legacy) {
-		System.import('vendor/corejs').then(loadMain)
-	} else {
-		loadMain()
-	}
-
-	// Application entry point
-	function loadMain() {
-		System.import((legacy ? 'es5' : 'es6') + '/main')
-	}
 })()

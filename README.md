@@ -7,11 +7,12 @@ bundled README.__
 
 ##Setup
 * Install [dependencies](#dependencies) listed below
-* `go get -u gopkg.in/bakape/meguca.v2`
-* `meguca.v2 init`
+* `go get -u github.com/bakape/meguca`
+* `meguca init`
 * Configure the server, installed in the standard location of your Go workspace
 (configuration WebUI soon™)
-* See `meguca.v2 help` for usage guide
+* Run `npm intall` inside the project directory to build the client
+* See `meguca help` for usage guide
 
 ##Dependencies
 * [Go](https://golang.org/doc/install)
@@ -20,19 +21,20 @@ bundled README.__
     want to configure anything, just copy `/etc/rethinkdb/default.conf.sample`
 	into `/etc/rethinkdb/instances.d/instance1.conf`. You might also set it to
 	autostart on boot. See the [official guide](http://www.rethinkdb.com/docs/start-on-startup/).
+* [Node.js](https://nodejs.org) Required for building the client
 
 ##Updating
-* `go get -u gopkg.in/bakape/meguca.v2`
-* `meguca.v2 restart`
+* `go get -u gopkg.in/bakape/meguca`
+* `npm install` inside the project directory
+* `meguca restart`
 * See `docs/` for upgrading between semver major releases
 
 ##Development
-* Install [Node.js](https://nodejs.org/en/) >=4.0.0
 * `npm install` to install build dependencies
 * `npm run-script build` to build the client
 * `npm run-script watch` to watch for file changes and automatically
 incrementally rebuild the client
-* Use `meguca.v2 debug` to run the server
+* Use `meguca debug` to run the server
 
 // TODO: Rewrite everything below for v2
 

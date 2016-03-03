@@ -5,6 +5,12 @@
 package server
 
 import (
+	"github.com/bakape/meguca/auth"
+	"github.com/bakape/meguca/config"
+	"github.com/bakape/meguca/db"
+	"github.com/bakape/meguca/imager"
+	"github.com/bakape/meguca/templates"
+	"github.com/bakape/meguca/util"
 	"github.com/gorilla/handlers"
 	"github.com/julienschmidt/httprouter"
 	"github.com/mssola/user_agent"
@@ -19,11 +25,20 @@ import (
 var (
 	webRoot      = "./www"
 	imageWebRoot = "./img"
+	workerPath   = "./www/js/scripts/worker.js"
 )
 
 func startWebServer() {
-	log.Println("Listening on " + config.HTTP.Addr)
-	log.Fatal(http.ListenAndServe(config.HTTP.Addr, wrapRouter(createRouter())))
+	log.Println("Listening on " + config.Config.HTTP.Addr)
+	var err error
+	conf := config.Config.HTTP
+	r := createRouter()
+	if conf.SSL {
+		err = http.ListenAndServeTLS(conf.Addr, conf.Cert, conf.Key, r)
+	} else {
+		err = http.ListenAndServe(conf.Addr, r)
+	}
+	log.Fatal(err)
 }
 
 // Create the monolithic router for routing HTTP requests. Separated into own
@@ -37,7 +52,7 @@ func createRouter() *httprouter.Router {
 	router.HandlerFunc("GET", "/", redirectToDefault)
 	router.HandlerFunc("GET", "/all/", serveIndexTemplate)
 	router.HandlerFunc("GET", "/api/all/", allBoardJSON)
-	for _, board := range config.Boards.Enabled {
+	for _, board := range config.Config.Boards.Enabled {
 		router.HandlerFunc("GET", "/"+board+"/", serveIndexTemplate)
 		router.HandlerFunc("GET", "/api/"+board+"/", boardJSON(board))
 
@@ -50,12 +65,16 @@ func createRouter() *httprouter.Router {
 	router.HandlerFunc("GET", "/api/config", serveConfigs)
 	router.GET("/api/post/:post", servePost)
 
+	// Websocket API
+	router.HandlerFunc("GET", "/socket", websocketHandler)
+
 	// Static assets
 	router.ServeFiles("/ass/*filepath", http.Dir("./www"))
 	router.GET("/img/*filepath", serveImages)
+	router.HandlerFunc("GET", "/worker.js", serveWorker)
 
 	// Image upload
-	router.HandlerFunc("POST", "/upload", NewImageUpload)
+	router.HandlerFunc("POST", "/upload", imager.NewImageUpload)
 
 	return router
 }
@@ -65,7 +84,7 @@ func createRouter() *httprouter.Router {
 func wrapRouter(router *httprouter.Router) http.Handler {
 	// Wrap router with extra handlers
 	handler := http.Handler(router)
-	if config.HTTP.TrustProxies { // Infer IP from header, if configured to
+	if config.Config.HTTP.TrustProxies { // Infer IP from header, if configured to
 		handler = handlers.ProxyHeaders(router)
 	}
 	handler = handlers.CompressHandler(handler) //GZIP
@@ -74,20 +93,20 @@ func wrapRouter(router *httprouter.Router) http.Handler {
 
 // Redirects to frontpage, if set, or the default board
 func redirectToDefault(res http.ResponseWriter, req *http.Request) {
-	if config.Frontpage != "" {
-		http.ServeFile(res, req, config.Frontpage)
+	if config.Config.Frontpage != "" {
+		http.ServeFile(res, req, config.Config.Frontpage)
 	} else {
-		http.Redirect(res, req, "/"+config.Boards.Default+"/", 302)
+		http.Redirect(res, req, "/"+config.Config.Boards.Default+"/", 302)
 	}
 }
 
 func serveIndexTemplate(res http.ResponseWriter, req *http.Request) {
 	isMobile := user_agent.New(req.UserAgent()).Mobile()
-	var template templateStore
+	var template templates.Store
 	if isMobile {
-		template = resources["mobile"]
+		template = templates.Resources["mobile"]
 	} else {
-		template = resources["index"]
+		template = templates.Resources["index"]
 	}
 	etag := template.Hash
 	if isMobile {
@@ -97,18 +116,20 @@ func serveIndexTemplate(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 	_, err := res.Write(template.HTML)
-	throw(err)
+	util.Throw(err)
 }
 
 // Serves `/api/:board/` page JSON
 func boardJSON(board string) http.HandlerFunc {
 	return func(res http.ResponseWriter, req *http.Request) {
-		if !compareEtag(res, req, etagStart(boardCounter(board)), true) {
+		if !compareEtag(res, req, etagStart(db.BoardCounter(board)), true) {
 			return
 		}
-		ident := lookUpIdent(req.RemoteAddr)
-		_, err := res.Write(marshalJSON(NewReader(board, ident).GetBoard()))
-		throw(err)
+		ident := auth.LookUpIdent(req.RemoteAddr)
+		_, err := res.Write(
+			util.MarshalJSON(db.NewReader(board, ident).GetBoard()),
+		)
+		util.Throw(err)
 	}
 }
 
@@ -136,35 +157,37 @@ func threadJSON(board string) httprouter.Handle {
 		ps httprouter.Params,
 	) {
 		id, err := strconv.ParseUint(ps[0].Value, 10, 64)
-		ident := lookUpIdent(req.RequestURI)
+		ident := auth.LookUpIdent(req.RequestURI)
 		if !validateThreadRequest(err, board, id) {
 			text404(res)
 			return
 		}
-		if !compareEtag(res, req, etagStart(threadCounter(id)), true) {
+		if !compareEtag(res, req, etagStart(db.ThreadCounter(id)), true) {
 			return
 		}
-		data := marshalJSON(
-			NewReader(board, ident).GetThread(id, detectLastN(req)),
+		data := util.MarshalJSON(
+			db.NewReader(board, ident).GetThread(id, detectLastN(req)),
 		)
 		_, err = res.Write(data)
-		throw(err)
+		util.Throw(err)
 	}
 }
 
 // Cofirm thread request is proper, thread exists and client had right of access
 func validateThreadRequest(err error, board string, id uint64) bool {
-	return err == nil && validateOP(id, board)
+	return err == nil && db.ValidateOP(id, board)
 }
 
 // Serves JSON for the "/all/" meta-board, that contains threads from all boards
 func allBoardJSON(res http.ResponseWriter, req *http.Request) {
-	if !compareEtag(res, req, etagStart(postCounter()), true) {
+	if !compareEtag(res, req, etagStart(db.PostCounter()), true) {
 		return
 	}
-	ident := lookUpIdent(req.RemoteAddr)
-	_, err := res.Write(marshalJSON(NewReader("all", ident).GetAllBoard()))
-	throw(err)
+	ident := auth.LookUpIdent(req.RemoteAddr)
+	_, err := res.Write(
+		util.MarshalJSON(db.NewReader("all", ident).GetAllBoard()),
+	)
+	util.Throw(err)
 }
 
 // Build an etag for HTML pages and check if it matches the one provided by the
@@ -185,7 +208,7 @@ func compareEtag(
 
 // Build the main part of the etag
 func etagStart(counter uint64) string {
-	return "W/" + idToString(counter)
+	return "W/" + util.IDToString(counter)
 }
 
 /*
@@ -208,7 +231,7 @@ func checkClientEtag(
 func notFound(res http.ResponseWriter) {
 	setErrorHeaders(res)
 	res.WriteHeader(404)
-	copyFile(webRoot+"/404.html", res)
+	util.CopyFile(webRoot+"/404.html", res)
 }
 
 // Addapter for using notFound as a route handler
@@ -231,8 +254,8 @@ func setErrorHeaders(res http.ResponseWriter) {
 func panicHandler(res http.ResponseWriter, req *http.Request, err interface{}) {
 	setErrorHeaders(res)
 	res.WriteHeader(500)
-	copyFile(webRoot+"/50x.html", res)
-	logError(req, err)
+	util.CopyFile(webRoot+"/50x.html", res)
+	util.LogError(req, err)
 }
 
 // Set HTTP headers to the response object
@@ -272,13 +295,13 @@ func detectLastN(req *http.Request) int {
 
 // Serve public configuration information as JSON
 func serveConfigs(res http.ResponseWriter, req *http.Request) {
-	etag := "W/" + configHash
+	etag := "W/" + config.Hash
 	if checkClientEtag(res, req, etag) {
 		return
 	}
 	setHeaders(res, etag, true)
-	_, err := res.Write(marshalJSON(clientConfig))
-	throw(err)
+	_, err := res.Write(config.ClientConfig)
+	util.Throw(err)
 }
 
 // Serve a single post as JSON
@@ -292,19 +315,19 @@ func servePost(
 		text404(res)
 		return
 	}
-	post := NewReader("", lookUpIdent(req.RemoteAddr)).GetPost(id)
+	post := db.NewReader("", auth.LookUpIdent(req.RemoteAddr)).GetPost(id)
 	if post.ID == 0 { // No post in the database or no access
 		text404(res)
 		return
 	}
-	data := marshalJSON(post)
-	etag := hashBuffer(data)
+	data := util.MarshalJSON(post)
+	etag := util.HashBuffer(data)
 	if checkClientEtag(res, req, etag) {
 		return
 	}
 	setHeaders(res, etag, true)
 	_, err = res.Write(data)
-	throw(err)
+	util.Throw(err)
 }
 
 // More performant handler for serving image assets. These are immutable
@@ -333,5 +356,12 @@ func serveImages(
 	headers.Set("Cache-Control", "max-age=30240000")
 	headers.Set("X-Frame-Options", "sameorigin")
 	_, err = io.Copy(res, file)
-	throw(err)
+	util.Throw(err)
+}
+
+// Seperate handler for serving the worker script file. Needed to bypass
+// security restrictions of not being able to proxy files above the sript URL
+// root. The alternative is adding a header to resources. Want to avoid that.
+func serveWorker(res http.ResponseWriter, req *http.Request) {
+	http.ServeFile(res, req, workerPath)
 }

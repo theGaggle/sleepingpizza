@@ -2,6 +2,11 @@ package server
 
 import (
 	"errors"
+	"github.com/bakape/meguca/config"
+	"github.com/bakape/meguca/db"
+	"github.com/bakape/meguca/templates"
+	"github.com/bakape/meguca/types"
+	r "github.com/dancannon/gorethink"
 	"github.com/julienschmidt/httprouter"
 	. "gopkg.in/check.v1"
 	"io/ioutil"
@@ -9,15 +14,117 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
+	"time"
 )
+
+var genericImage = types.Image{File: "foo"}
+
+// Does not seem like we can easily resuse testing functions. Thus copy/paste
+// for now.
+type DB struct {
+	dbName string
+}
+
+var testDBName string
+
+var _ = Suite(&DB{})
+
+func (d *DB) SetUpSuite(c *C) {
+	d.dbName = uniqueDBName()
+	connectToRethinkDb(c)
+	db.DB()(r.DBCreate(d.dbName)).Exec()
+	db.RSession.Use(d.dbName)
+	db.CreateTables()
+	db.CreateIndeces()
+}
+
+// Returns a unique datatabase name. Needed so multiple concurent `go test`
+// don't clash in the same database.
+func uniqueDBName() string {
+	return "meguca_tests_" + strconv.FormatInt(time.Now().UnixNano(), 10)
+}
+
+func connectToRethinkDb(c *C) {
+	var err error
+	db.RSession, err = r.Connect(r.ConnectOpts{
+		Address: "localhost:28015",
+	})
+	c.Assert(err, IsNil)
+}
+
+func (*DB) SetUpTest(_ *C) {
+	config.Config = config.Server{}
+	config.Config.Boards.Enabled = []string{"a"}
+}
+
+// Clear all documents from all tables after each test.
+func (*DB) TearDownTest(_ *C) {
+	for _, table := range db.AllTables {
+		db.DB()(r.Table(table).Delete()).Exec()
+	}
+}
+
+func (d *DB) TearDownSuite(c *C) {
+	c.Assert(r.DBDrop(d.dbName).Exec(db.RSession), IsNil)
+	c.Assert(db.RSession.Close(), IsNil)
+}
+
+// Create a multipurpose set of threads and posts for tests
+func setupPosts() {
+	db.DB()(r.Table("threads").Insert([]types.Thread{
+		{ID: 1, Board: "a"},
+		{ID: 3, Board: "a"},
+		{ID: 4, Board: "c"},
+	})).Exec()
+	db.DB()(r.Table("posts").Insert([]types.Post{
+		{
+			ID:    1,
+			OP:    1,
+			Board: "a",
+			Image: genericImage,
+		},
+		{
+			ID:    2,
+			OP:    1,
+			Board: "a",
+		},
+		{
+			ID:    3,
+			OP:    3,
+			Board: "a",
+			Image: genericImage,
+		},
+		{
+			ID:    4,
+			OP:    4,
+			Board: "c",
+			Image: genericImage,
+		},
+	})).Exec()
+	db.DB()(r.Table("main").Insert(map[string]interface{}{
+		"id": "histCounts",
+		"a":  7,
+	})).Exec()
+	db.DB()(r.Table("main").Insert(map[string]interface{}{
+		"id":      "info",
+		"postCtr": 8,
+	})).Exec()
+}
 
 type WebServer struct{}
 
 var _ = Suite(&WebServer{})
 
+func (*WebServer) SetUpTest(_ *C) {
+	config.Config = config.Server{}
+	config.Config.Boards.Enabled = []string{"a"}
+	config.Hash = ""
+	config.ClientConfig = nil
+}
+
 func (*WebServer) TestFrontpageRedirect(c *C) {
-	config = serverConfigs{}
-	config.Frontpage = "./test/frontpage.html"
+	config.Config.Frontpage = "./test/frontpage.html"
 	server := httptest.NewServer(http.HandlerFunc(redirectToDefault))
 	defer server.Close()
 	res, err := http.Get(server.URL)
@@ -29,8 +136,7 @@ func (*WebServer) TestFrontpageRedirect(c *C) {
 }
 
 func (*WebServer) TestDefaultBoardRedirect(c *C) {
-	config = serverConfigs{}
-	config.Boards.Default = "a"
+	config.Config.Boards.Default = "a"
 	rec := runHandler(c, redirectToDefault)
 	assertCode(rec, 302, c)
 	c.Assert(rec.Header().Get("Location"), Equals, "/a/")
@@ -68,12 +174,12 @@ func newRequest(c *C) *http.Request {
 }
 
 func (*WebServer) TestConfigServing(c *C) {
-	configHash = "foo"
-	clientConfig = clientConfigs{}
-	etag := "W/" + configHash
+	config.Hash = "foo"
+	config.ClientConfig = []byte{1}
+	etag := "W/" + config.Hash
 	rec := runHandler(c, serveConfigs)
 	assertCode(rec, 200, c)
-	assertBody(rec, string(marshalJSON(clientConfig)), c)
+	assertBody(rec, string([]byte{1}), c)
 	assertEtag(rec, etag, c)
 
 	// And with etag
@@ -242,11 +348,12 @@ func (*WebServer) TestServeIndexTemplate(c *C) {
 			" Build/JRO03C) AppleWebKit/535.19 (KHTML, like Gecko)" +
 			" Chrome/18.0.1025.166 Mobile Safari/535.19"
 	)
-	desktop := templateStore{[]byte("desktop"), "dhash"}
-	mobile := templateStore{[]byte("mobile"), "mhash"}
-	resources = templateMap{}
-	resources["index"] = desktop
-	resources["mobile"] = mobile
+	desktop := templates.Store{[]byte("desktop"), "dhash"}
+	mobile := templates.Store{[]byte("mobile"), "mhash"}
+	templates.Resources = templates.Map{
+		"index":  desktop,
+		"mobile": mobile,
+	}
 
 	// Desktop
 	req := newRequest(c)
@@ -274,8 +381,8 @@ func (*WebServer) TestServeIndexTemplate(c *C) {
 
 func (*DB) TestThreadHTML(c *C) {
 	body := []byte("body")
-	resources = templateMap{
-		"index": templateStore{
+	templates.Resources = templates.Map{
+		"index": templates.Store{
 			HTML: body,
 			Hash: "hash",
 		},
@@ -293,7 +400,6 @@ func (*DB) TestThreadHTML(c *C) {
 	assertCode(rec, 404, c)
 
 	// Thread exists
-	setupBoardAccess()
 	setupPosts()
 	rec = httptest.NewRecorder()
 	threadHTML("a")(rec, newRequest(c), httprouter.Params{{Value: "1"}})
@@ -301,7 +407,6 @@ func (*DB) TestThreadHTML(c *C) {
 }
 
 func (*DB) TestServePost(c *C) {
-	setupBoardAccess()
 	setupPosts()
 
 	// Invalid post number
@@ -335,16 +440,15 @@ func (*DB) TestServePost(c *C) {
 
 func (*DB) TestBoardJSON(c *C) {
 	setupPosts()
-	setupBoardAccess()
 
 	rec := httptest.NewRecorder()
 	boardJSON("a")(rec, newRequest(c))
 	assertBody(
 		rec,
 		`{"ctr":7,"threads":[{"postCtr":0,"imageCtr":0,"bumpTime":0,`+
-			`"replyTime":0,"editing":false,"src":"foo","time":0,"body":""},`+
+			`"replyTime":0,"editing":false,"file":"foo","time":0,"body":""},`+
 			`{"postCtr":1,"imageCtr":0,"bumpTime":0,"replyTime":0,`+
-			`"editing":false,"src":"foo","time":0,"body":""}]}`,
+			`"editing":false,"file":"foo","time":0,"body":""}]}`,
 		c,
 	)
 	const etag = "W/7"
@@ -359,7 +463,6 @@ func (*DB) TestBoardJSON(c *C) {
 }
 
 func (*DB) TestAllBoardJSON(c *C) {
-	setupBoardAccess()
 	setupPosts()
 
 	rec := httptest.NewRecorder()
@@ -368,11 +471,11 @@ func (*DB) TestAllBoardJSON(c *C) {
 	assertBody(
 		rec,
 		`{"ctr":8,"threads":[{"postCtr":0,"imageCtr":0,"bumpTime":0,`+
-			`"replyTime":0,"editing":false,"src":"foo","time":0,"body":""},`+
+			`"replyTime":0,"editing":false,"file":"foo","time":0,"body":""},`+
 			`{"postCtr":0,"imageCtr":0,"bumpTime":0,"replyTime":0,`+
-			`"editing":false,"src":"foo","time":0,"body":""},{"postCtr":1,`+
+			`"editing":false,"file":"foo","time":0,"body":""},{"postCtr":1,`+
 			`"imageCtr":0,"bumpTime":0,"replyTime":0,"editing":false,`+
-			`"src":"foo","time":0,"body":""}]}`,
+			`"file":"foo","time":0,"body":""}]}`,
 		c,
 	)
 	assertEtag(rec, etag, c)
@@ -386,7 +489,6 @@ func (*DB) TestAllBoardJSON(c *C) {
 }
 
 func (*DB) TestThreadJSON(c *C) {
-	setupBoardAccess()
 	setupPosts()
 
 	// Invalid post number
@@ -405,7 +507,7 @@ func (*DB) TestThreadJSON(c *C) {
 	assertBody(
 		rec,
 		`{"postCtr":1,"imageCtr":0,"bumpTime":0,"replyTime":0,"editing":false,`+
-			`"src":"foo","time":0,"body":"","posts":{"2":{"editing":false,`+
+			`"file":"foo","time":0,"body":"","posts":{"2":{"editing":false,`+
 			`"op":1,"id":2,"time":0,"board":"a","body":""}}}`,
 		c,
 	)
@@ -426,8 +528,6 @@ type routeCheck struct {
 }
 
 func (*WebServer) TestCreateRouter(c *C) {
-	config = serverConfigs{}
-	config.Boards.Enabled = []string{"a"}
 	r := createRouter()
 	gets := [...]routeCheck{
 		{"/", nil},
@@ -439,7 +539,9 @@ func (*WebServer) TestCreateRouter(c *C) {
 		{"/api/a/1", httprouter.Params{{"thread", "1"}}},
 		{"/api/config", nil},
 		{"/api/post/1", httprouter.Params{{"post", "1"}}},
+		{"/socket", nil},
 		{"/ass/favicon.gif", httprouter.Params{{"filepath", "/favicon.gif"}}},
+		{"/worker.js", nil},
 		{
 			"/img/src/madotsuki.png",
 			httprouter.Params{{"filepath", "/src/madotsuki.png"}},
@@ -458,8 +560,6 @@ func assertRoute(method string, rc routeCheck, r *httprouter.Router, c *C) {
 }
 
 func (*WebServer) TestWrapRouter(c *C) {
-	config = serverConfigs{}
-
 	// Test GZIP
 	r := httprouter.New()
 	r.HandlerFunc("GET", "/", func(res http.ResponseWriter, _ *http.Request) {
@@ -473,7 +573,7 @@ func (*WebServer) TestWrapRouter(c *C) {
 	c.Assert(rec.Header().Get("Content-Encoding"), Equals, "gzip")
 
 	// Test honouring "X-Forwarded-For" headers
-	config.HTTP.TrustProxies = true
+	config.Config.HTTP.TrustProxies = true
 	r = httprouter.New()
 	var remoteIP string
 	r.HandlerFunc("GET", "/", func(res http.ResponseWriter, req *http.Request) {
@@ -487,4 +587,9 @@ func (*WebServer) TestWrapRouter(c *C) {
 	req.Header.Set("X-Forwarded-For", ip)
 	wrapRouter(r).ServeHTTP(rec, req)
 	c.Assert(remoteIP, Equals, ip)
+}
+
+func (*WebServer) TestServeWorker(c *C) {
+	workerPath = "./test/frontpage.html"
+	assertBody(runHandler(c, serveWorker), "<!doctype html><html></html>\n", c)
 }
